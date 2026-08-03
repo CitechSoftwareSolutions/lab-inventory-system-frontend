@@ -7,25 +7,12 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/context/AuthContext';
 import { format } from 'date-fns';
-import type {
-  Consumable,
-  ConsumableFormData,
-  ConsumableCategory,
-  PaginatedConsumables,
-  Supplier,
-} from '@/types';
-
-const CONSUMABLE_CATEGORIES: ConsumableCategory[] = [
-  'Gloves', 'Face Masks', 'Syringes', 'Filter Paper', 'Pipette Tips',
-  'Centrifuge Tubes', 'Eppendorf Tubes', 'PCR Tubes', 'Microscope Slides',
-  'Cover Slips', 'pH Strips', 'Lab Tape', 'Parafilm', 'Aluminium Foil',
-  'Tissue Paper', 'Cotton Wool', 'Other',
-];
+import type { Consumable, ConsumableFormData, PaginatedConsumables, Supplier, Category } from '@/types';
 
 const UNITS = ['box', 'pack', 'roll', 'pcs', 'pair', 'set', 'bag', 'sheet'];
 
 const emptyForm = (): ConsumableFormData => ({
-  name: '', brand: '', category: '', batch_number: '', quantity: '',
+  name: '', brand: '', category_id: '', batch_number: '', quantity: '',
   min_quantity: 0, unit: 'box', pack_size: '', expiry_date: '',
   location: '', supplier_id: '', price: '', notes: '',
 });
@@ -41,36 +28,22 @@ function isExpired(date: string | null): boolean {
   return new Date(date).getTime() < Date.now();
 }
 
-interface ConsumableFormProps {
-  initial: Consumable | null;
-  suppliers: Supplier[];
-  onSubmit: (form: ConsumableFormData) => void;
-  loading: boolean;
-}
-
-function ConsumableForm({ initial, suppliers, onSubmit, loading }: ConsumableFormProps) {
+function ConsumableForm({ initial, suppliers, categories, onSubmit, loading }: {
+  initial: Consumable | null; suppliers: Supplier[]; categories: Category[];
+  onSubmit: (form: ConsumableFormData) => void; loading: boolean;
+}) {
   const [form, setForm] = useState<ConsumableFormData>(
-    initial
-      ? {
-          name: initial.name,
-          brand: initial.brand ?? '',
-          category: initial.category ?? '',
-          batch_number: initial.batch_number ?? '',
-          quantity: initial.quantity,
-          min_quantity: initial.min_quantity,
-          unit: initial.unit,
-          pack_size: initial.pack_size ?? '',
-          expiry_date: initial.expiry_date ?? '',
-          location: initial.location ?? '',
-          supplier_id: initial.supplier_id ?? '',
-          price: initial.price ?? '',
-          notes: initial.notes ?? '',
-        }
-      : emptyForm()
+    initial ? {
+      name: initial.name, brand: initial.brand ?? '',
+      category_id: initial.category_id ?? '',
+      batch_number: initial.batch_number ?? '', quantity: initial.quantity,
+      min_quantity: initial.min_quantity, unit: initial.unit,
+      pack_size: initial.pack_size ?? '', expiry_date: initial.expiry_date ?? '',
+      location: initial.location ?? '', supplier_id: initial.supplier_id ?? '',
+      price: initial.price ?? '', notes: initial.notes ?? '',
+    } : emptyForm()
   );
-
-  const set = <K extends keyof ConsumableFormData>(k: K, v: ConsumableFormData[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
+  const set = <K extends keyof ConsumableFormData>(k: K, v: ConsumableFormData[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
     <form onSubmit={(e: FormEvent) => { e.preventDefault(); onSubmit(form); }} className="space-y-4">
@@ -79,81 +52,70 @@ function ConsumableForm({ initial, suppliers, onSubmit, loading }: ConsumableFor
           <label className="label">Name *</label>
           <input className="input" value={form.name as string} onChange={(e) => set('name', e.target.value)} required placeholder="e.g., Nitrile Gloves Size M" />
         </div>
-
         <div>
           <label className="label">Category</label>
-          <select className="input" value={form.category as string} onChange={(e) => set('category', e.target.value)}>
-            <option value="">-- Select Category --</option>
-            {CONSUMABLE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          <select className="input" value={form.category_id as string} onChange={(e) => set('category_id', e.target.value)}>
+            <option value="">— None —</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.parent_name ? `${c.parent_name} › ` : ''}{c.name}</option>)}
           </select>
         </div>
-
         <div>
           <label className="label">Brand</label>
           <input className="input" value={form.brand as string} onChange={(e) => set('brand', e.target.value)} placeholder="e.g., Kimberly-Clark" />
         </div>
-
         <div>
           <label className="label">Batch / Lot Number</label>
           <input className="input" value={form.batch_number as string} onChange={(e) => set('batch_number', e.target.value)} placeholder="e.g., LOT-2024-001" />
         </div>
-
         <div>
           <label className="label">Expiry Date</label>
           <input type="date" className="input" value={form.expiry_date as string} onChange={(e) => set('expiry_date', e.target.value)} />
         </div>
-
         <div>
           <label className="label">Quantity *</label>
-          <input type="number" step="0.01" min="0" className="input" value={form.quantity as string} onChange={(e) => set('quantity', e.target.value)} required disabled={!!initial} />
-          {initial && <p className="text-xs text-gray-400 mt-1">Use Transactions to adjust quantity</p>}
+          <input type="number" step="0.01" min="0" className="input" value={form.quantity as string}
+            onChange={(e) => set('quantity', e.target.value)} required disabled={!!initial} />
+          {initial && <p className="text-xs text-gray-400 mt-1">Use Stock Movements to adjust quantity</p>}
         </div>
-
         <div>
           <label className="label">Min Quantity (Alert)</label>
-          <input type="number" step="0.01" min="0" className="input" value={form.min_quantity as string} onChange={(e) => set('min_quantity', e.target.value)} />
+          <input type="number" step="0.01" min="0" className="input" value={form.min_quantity as string}
+            onChange={(e) => set('min_quantity', e.target.value)} />
         </div>
-
         <div>
           <label className="label">Unit</label>
           <select className="input" value={form.unit as string} onChange={(e) => set('unit', e.target.value)}>
             {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
         </div>
-
         <div>
           <label className="label">Pack Size (items per unit)</label>
-          <input type="number" step="1" min="1" className="input" value={form.pack_size as string} onChange={(e) => set('pack_size', e.target.value)} placeholder="e.g., 100" />
+          <input type="number" step="1" min="1" className="input" value={form.pack_size as string}
+            onChange={(e) => set('pack_size', e.target.value)} placeholder="e.g., 100" />
         </div>
-
         <div>
           <label className="label">Location</label>
           <input className="input" value={form.location as string} onChange={(e) => set('location', e.target.value)} placeholder="e.g., Store Room A" />
         </div>
-
         <div>
           <label className="label">Supplier</label>
           <select className="input" value={form.supplier_id as string} onChange={(e) => set('supplier_id', e.target.value)}>
-            <option value="">-- None --</option>
+            <option value="">— None —</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
-
         <div>
           <label className="label">Price (per unit)</label>
-          <input type="number" step="0.01" min="0" className="input" value={form.price as string} onChange={(e) => set('price', e.target.value)} placeholder="0.00" />
+          <input type="number" step="0.01" min="0" className="input" value={form.price as string}
+            onChange={(e) => set('price', e.target.value)} placeholder="0.00" />
         </div>
-
         <div className="col-span-2">
           <label className="label">Notes</label>
           <textarea className="input" rows={2} value={form.notes as string} onChange={(e) => set('notes', e.target.value)} />
         </div>
       </div>
-
       <div className="flex justify-end pt-2">
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? 'Saving...' : initial ? 'Update' : 'Add Consumable'}
-        </button>
+        <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving...' : initial ? 'Update' : 'Add Consumable'}</button>
       </div>
     </form>
   );
@@ -163,6 +125,7 @@ export default function ConsumablesPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<Consumable[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -174,63 +137,47 @@ export default function ConsumablesPage() {
   const [editItem, setEditItem] = useState<Consumable | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Consumable | null>(null);
   const [saving, setSaving] = useState(false);
-  const canEdit = user?.role !== 'viewer';
+  const canEdit = user?.role !== 'lab_technician';
+  const canDelete = user?.role === 'super_admin' || user?.role === 'branch_manager';
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (search) params.set('search', search);
-      if (categoryFilter) params.set('category', categoryFilter);
+      if (categoryFilter) params.set('category_id', categoryFilter);
       if (lowStock) params.set('low_stock', 'true');
       const r = await api.get<PaginatedConsumables>(`/consumables?${params}`);
       setItems(r.data?.items ?? []);
       setTotalPages(r.data?.pages ?? 1);
       setTotal(r.data?.total ?? 0);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [search, categoryFilter, lowStock, page]);
 
   useEffect(() => {
     fetchItems();
-    api.get<Supplier[]>('/suppliers').then((r) => setSuppliers(r.data));
+    api.get<Supplier[]>('/suppliers').then((r) => setSuppliers(r.data ?? []));
+    api.get<Category[]>('/categories?type=Consumables').then((r) => setCategories(r.data ?? []));
   }, [fetchItems]);
 
   const handleSave = async (form: ConsumableFormData) => {
     setSaving(true);
     try {
-      if (editItem) {
-        await api.put(`/consumables/${editItem.id}`, form);
-        toast.success('Consumable updated');
-      } else {
-        await api.post('/consumables', form);
-        toast.success('Consumable added');
-      }
-      setFormModal(false);
-      setEditItem(null);
-      fetchItems();
+      if (editItem) { await api.put(`/consumables/${editItem.id}`, form); toast.success('Consumable updated'); }
+      else { await api.post('/consumables', form); toast.success('Consumable added'); }
+      setFormModal(false); setEditItem(null); fetchItems();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string; errors?: { msg: string }[] } } };
       toast.error(e.response?.data?.error ?? e.response?.data?.errors?.[0]?.msg ?? 'Failed');
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setSaving(true);
-    try {
-      await api.delete(`/consumables/${deleteTarget.id}`);
-      toast.success('Consumable deleted');
-      setDeleteTarget(null);
-      fetchItems();
-    } catch {
-      toast.error('Failed to delete');
-    } finally {
-      setSaving(false);
-    }
+    try { await api.delete(`/consumables/${deleteTarget.id}`); toast.success('Consumable deleted'); setDeleteTarget(null); fetchItems(); }
+    catch { toast.error('Failed to delete'); }
+    finally { setSaving(false); }
   };
 
   const expiredCount = items.filter((i) => isExpired(i.expiry_date)).length;
@@ -240,57 +187,37 @@ export default function ConsumablesPage() {
   return (
     <AppLayout title="Consumables">
       <div className="space-y-4">
-        {/* Alert strip */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="card py-3 px-4 flex items-center gap-3">
             <div className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
-            <div>
-              <p className="text-xs text-gray-500">Expired</p>
-              <p className="text-lg font-bold text-gray-900">{expiredCount}</p>
-            </div>
+            <div><p className="text-xs text-gray-500">Expired</p><p className="text-lg font-bold text-gray-900">{expiredCount}</p></div>
           </div>
           <div className="card py-3 px-4 flex items-center gap-3">
             <div className="w-2.5 h-2.5 rounded-full bg-yellow-500 flex-shrink-0" />
-            <div>
-              <p className="text-xs text-gray-500">Expiring Soon (30d)</p>
-              <p className="text-lg font-bold text-gray-900">{expiringSoonCount}</p>
-            </div>
+            <div><p className="text-xs text-gray-500">Expiring Soon (30d)</p><p className="text-lg font-bold text-gray-900">{expiringSoonCount}</p></div>
           </div>
           <div className="card py-3 px-4 flex items-center gap-3">
             <div className="w-2.5 h-2.5 rounded-full bg-orange-500 flex-shrink-0" />
-            <div>
-              <p className="text-xs text-gray-500">Low Stock</p>
-              <p className="text-lg font-bold text-gray-900">{lowStockCount}</p>
-            </div>
+            <div><p className="text-xs text-gray-500">Low Stock</p><p className="text-lg font-bold text-gray-900">{lowStockCount}</p></div>
           </div>
         </div>
 
-        {/* Filters */}
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex flex-wrap gap-3 flex-1">
-            <input
-              className="input max-w-xs"
-              placeholder="Search consumables..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            />
-            <select className="input max-w-[180px]" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
+            <input className="input max-w-xs" placeholder="Search consumables..." value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            <select className="input max-w-[200px]" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
               <option value="">All Categories</option>
-              {CONSUMABLE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
               <input type="checkbox" checked={lowStock} onChange={(e) => { setLowStock(e.target.checked); setPage(1); }} className="rounded" />
               Low Stock
             </label>
           </div>
-          {canEdit && (
-            <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>
-              + Add Consumable
-            </button>
-          )}
+          {canEdit && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Consumable</button>}
         </div>
 
-        {/* Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -319,22 +246,18 @@ export default function ConsumablesPage() {
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="table-cell font-medium">{item.name}</td>
                       <td className="table-cell">
-                        {item.category ? (
-                          <span className="badge bg-purple-50 text-purple-700">{item.category}</span>
+                        {item.category_name ? (
+                          <span className="badge bg-purple-50 text-purple-700">{item.category_name}</span>
                         ) : '—'}
                       </td>
                       <td className="table-cell text-gray-500">{item.brand ?? '—'}</td>
                       <td className="table-cell text-gray-500 text-xs">{item.batch_number ?? '—'}</td>
                       <td className="table-cell">
                         <div className="flex items-center gap-2">
-                          <span className={`font-semibold ${isLow ? 'text-red-600' : 'text-gray-900'}`}>
-                            {item.quantity} {item.unit}
-                          </span>
+                          <span className={`font-semibold ${isLow ? 'text-red-600' : 'text-gray-900'}`}>{item.quantity} {item.unit}</span>
                           {isLow && <span className="badge bg-red-50 text-red-600 text-xs">Low</span>}
                         </div>
-                        {item.pack_size && (
-                          <p className="text-xs text-gray-400">{item.pack_size} per {item.unit}</p>
-                        )}
+                        {item.pack_size && <p className="text-xs text-gray-400">{item.pack_size} per {item.unit}</p>}
                       </td>
                       <td className="table-cell text-xs">
                         {item.expiry_date ? (
@@ -348,16 +271,8 @@ export default function ConsumablesPage() {
                       <td className="table-cell text-gray-500">{item.location ?? '—'}</td>
                       <td className="table-cell">
                         <div className="flex gap-2">
-                          {canEdit && (
-                            <button onClick={() => { setEditItem(item); setFormModal(true); }} className="text-xs btn-secondary py-1 px-2">
-                              Edit
-                            </button>
-                          )}
-                          {user?.role === 'admin' && (
-                            <button onClick={() => setDeleteTarget(item)} className="text-xs text-red-600 hover:text-red-700 py-1 px-2">
-                              Delete
-                            </button>
-                          )}
+                          {canEdit && <button onClick={() => { setEditItem(item); setFormModal(true); }} className="text-xs btn-secondary py-1 px-2">Edit</button>}
+                          {canDelete && <button onClick={() => setDeleteTarget(item)} className="text-xs text-red-600 hover:text-red-700 py-1 px-2">Delete</button>}
                         </div>
                       </td>
                     </tr>
@@ -379,23 +294,11 @@ export default function ConsumablesPage() {
         </div>
       </div>
 
-      <Modal
-        open={formModal}
-        onClose={() => { setFormModal(false); setEditItem(null); }}
-        title={editItem ? 'Edit Consumable' : 'Add Consumable'}
-        size="lg"
-      >
-        <ConsumableForm initial={editItem} suppliers={suppliers} onSubmit={handleSave} loading={saving} />
+      <Modal open={formModal} onClose={() => { setFormModal(false); setEditItem(null); }} title={editItem ? 'Edit Consumable' : 'Add Consumable'} size="lg">
+        <ConsumableForm initial={editItem} suppliers={suppliers} categories={categories} onSubmit={handleSave} loading={saving} />
       </Modal>
-
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        title="Delete Consumable"
-        message={`Delete "${deleteTarget?.name}"? This cannot be undone.`}
-        loading={saving}
-      />
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
+        title="Delete Consumable" message={`Delete "${deleteTarget?.name}"? This cannot be undone.`} loading={saving} />
     </AppLayout>
   );
 }

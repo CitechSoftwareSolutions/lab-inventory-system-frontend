@@ -4,7 +4,8 @@ import AppLayout from '@/components/Layout/AppLayout';
 import api from '@/lib/api';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
-import type { DashboardStats, ActivityDay } from '@/types';
+import type { DashboardStats, ActivityDay, MovementType } from '@/types';
+import { MOVEMENT_LABELS, MOVEMENT_DIRECTION } from '@/types';
 
 interface StatCardProps {
   label: string;
@@ -37,12 +38,14 @@ function StatCard({ label, value, sub, color = 'blue', icon }: StatCardProps) {
   );
 }
 
-const TX_TYPE_COLOR: Record<string, string> = {
-  IN: 'text-green-600 bg-green-50',
-  OUT: 'text-red-600 bg-red-50',
-  ADJUSTMENT: 'text-blue-600 bg-blue-50',
-  RETURN: 'text-purple-600 bg-purple-50',
-  DISPOSAL: 'text-orange-600 bg-orange-50',
+const TX_TYPE_COLOR: Record<MovementType, string> = {
+  PURCHASE: 'text-green-600 bg-green-50',
+  BRANCH_RECEIPT: 'text-teal-600 bg-teal-50',
+  USAGE: 'text-blue-600 bg-blue-50',
+  BRANCH_TRANSFER: 'text-orange-600 bg-orange-50',
+  EXPIRY_DISPOSAL: 'text-red-600 bg-red-50',
+  SUPPLIER_RETURN: 'text-purple-600 bg-purple-50',
+  ADJUSTMENT: 'text-gray-600 bg-gray-100',
 };
 
 export default function DashboardPage() {
@@ -170,20 +173,24 @@ export default function DashboardPage() {
               <h3 className="font-semibold text-gray-800 mb-4">Recent Transactions</h3>
               {stats?.recent_transactions?.length ? (
                 <div className="space-y-2">
-                  {stats.recent_transactions.map((tx) => (
-                    <div key={tx.id} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
-                      <span className={`badge text-xs ${TX_TYPE_COLOR[tx.type] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {tx.type}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-800 truncate">{tx.item_name}</p>
-                        <p className="text-xs text-gray-400">{tx.performed_by_name}</p>
+                  {stats.recent_transactions.map((tx) => {
+                    const mvType = tx.type as MovementType;
+                    const dir = MOVEMENT_DIRECTION[mvType];
+                    return (
+                      <div key={tx.id} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
+                        <span className={`badge text-xs ${TX_TYPE_COLOR[mvType] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {MOVEMENT_LABELS[mvType] ?? tx.type}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800 truncate">{tx.item_name ?? `#${tx.item_id}`}</p>
+                          <p className="text-xs text-gray-400">{tx.performed_by_name}</p>
+                        </div>
+                        <span className={`text-sm font-medium ${dir === 'IN' ? 'text-green-600' : dir === 'OUT' ? 'text-red-600' : 'text-gray-600'}`}>
+                          {dir === 'IN' ? '+' : dir === 'OUT' ? '-' : '±'}{tx.quantity} {tx.unit}
+                        </span>
                       </div>
-                      <span className="text-sm font-medium">
-                        {tx.quantity} {tx.unit}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 text-center py-8">No recent transactions</p>

@@ -182,20 +182,33 @@ export const MOVEMENT_LABELS: Record<MovementType, string> = {
   ADJUSTMENT: 'Stock Adjustment',
 };
 
+export type StockItemType = 'Chemical' | 'Glassware' | 'Consumable';
+
 export interface Transaction {
   id: number;
+  item_type: StockItemType;
   item_id: number;
   type: MovementType;
   quantity: number;
-  quantity_before: number;
-  quantity_after: number;
+  quantity_before: number | null;
+  quantity_after: number | null;
   reference_number: string | null;
   notes: string | null;
+  branch_id: number | null;
   performed_by: number | null;
   item_name?: string;
   unit?: string;
   performed_by_name?: string | null;
   created_at: string;
+}
+
+export interface StockMovementFormData {
+  item_type: StockItemType;
+  item_id: string | number;
+  type: MovementType;
+  quantity: string | number;
+  reference_number: string;
+  notes: string;
 }
 
 export interface TransactionFormData {
@@ -215,13 +228,16 @@ export interface PaginatedTransactions {
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
 export type OrderStatus = 'Draft' | 'Submitted' | 'Approved' | 'Ordered' | 'Received' | 'Cancelled';
+export type OrderItemType = 'Chemical' | 'Glassware' | 'Consumable' | 'Equipment' | 'Instrument';
 
 export interface OrderItem {
   id?: number;
   order_id?: number;
-  item_name: string;
+  item_type: OrderItemType;
+  item_id: number;
+  item_name: string | null;
   quantity: number;
-  unit: string;
+  unit: string | null;
   unit_price: number | null;
   total_price?: number | null;
   notes: string | null;
@@ -230,16 +246,16 @@ export interface OrderItem {
 export interface Order {
   id: number;
   order_number: string;
-  supplier_id: number;
+  supplier_id: number | null;
   supplier_name?: string | null;
   branch_id: number;
   branch_name?: string | null;
   status: OrderStatus;
-  order_date: string;
+  order_date?: string | null;
   expected_delivery: string | null;
   total_amount: number | null;
   notes: string | null;
-  created_by: number;
+  created_by?: number | null;
   created_by_name?: string | null;
   item_count?: number;
   items?: OrderItem[];
@@ -254,7 +270,8 @@ export interface OrderFormData {
 }
 
 export interface OrderItemFormData {
-  item_name: string;
+  item_type: OrderItemType;
+  item_id: string | number;
   quantity: string | number;
   unit: string;
   unit_price: string | number;
@@ -303,12 +320,6 @@ export interface ActivityDay {
 
 // ─── Glassware ────────────────────────────────────────────────────────────────
 
-export type GlasswareType =
-  | 'Beaker' | 'Erlenmeyer Flask' | 'Volumetric Flask' | 'Graduated Cylinder'
-  | 'Test Tube' | 'Petri Dish' | 'Burette' | 'Pipette' | 'Round Bottom Flask'
-  | 'Conical Flask' | 'Watch Glass' | 'Funnel' | 'Separating Funnel'
-  | 'Crucible' | 'Evaporating Dish';
-
 export type GlasswareCondition = 'Good' | 'Fair' | 'Poor' | 'Broken';
 export type GlassMaterial = 'Borosilicate Glass' | 'Soda-Lime Glass' | 'Quartz Glass' | 'Plastic' | 'Porcelain';
 export type CapacityUnit = 'ml' | 'L' | 'μL';
@@ -316,10 +327,11 @@ export type CapacityUnit = 'ml' | 'L' | 'μL';
 export interface Glassware {
   id: number;
   name: string;
-  type: GlasswareType | null;
+  category_id: number | null;
+  category_name?: string | null;
   capacity: number | null;
-  capacity_unit: CapacityUnit;
-  material: GlassMaterial | null;
+  capacity_unit: string;
+  material: string | null;
   quantity: number;
   min_quantity: number;
   condition: GlasswareCondition;
@@ -335,7 +347,7 @@ export interface Glassware {
 
 export interface GlasswareFormData {
   name: string;
-  type: string;
+  category_id: string | number;
   capacity: string | number;
   capacity_unit: string;
   material: string;
@@ -357,17 +369,12 @@ export interface PaginatedGlassware {
 
 // ─── Consumables ──────────────────────────────────────────────────────────────
 
-export type ConsumableCategory =
-  | 'Gloves' | 'Face Masks' | 'Syringes' | 'Filter Paper' | 'Pipette Tips'
-  | 'Centrifuge Tubes' | 'Eppendorf Tubes' | 'PCR Tubes' | 'Microscope Slides'
-  | 'Cover Slips' | 'pH Strips' | 'Lab Tape' | 'Parafilm' | 'Aluminium Foil'
-  | 'Tissue Paper' | 'Cotton Wool' | 'Other';
-
 export interface Consumable {
   id: number;
   name: string;
   brand: string | null;
-  category: ConsumableCategory | null;
+  category_id: number | null;
+  category_name?: string | null;
   batch_number: string | null;
   quantity: number;
   min_quantity: number;
@@ -387,7 +394,7 @@ export interface Consumable {
 export interface ConsumableFormData {
   name: string;
   brand: string;
-  category: string;
+  category_id: string | number;
   batch_number: string;
   quantity: string | number;
   min_quantity: string | number;

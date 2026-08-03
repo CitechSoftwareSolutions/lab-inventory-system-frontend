@@ -76,7 +76,8 @@ export default function SuppliersPage() {
   const [editItem, setEditItem] = useState<Supplier | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
   const [saving, setSaving] = useState(false);
-  const canEdit = user?.role !== 'viewer';
+  const canEdit = user?.role !== 'lab_technician';
+  const canDelete = user?.role === 'super_admin' || user?.role === 'branch_manager';
 
   const fetchSuppliers = useCallback(async () => {
     setLoading(true);
@@ -183,7 +184,7 @@ export default function SuppliersPage() {
                             Edit
                           </button>
                         )}
-                        {user?.role === 'admin' && (
+                        {canDelete && (
                           <button
                             onClick={() => setDeleteTarget(s)}
                             className="text-xs text-red-600 hover:text-red-700 py-1 px-2"

@@ -6,7 +6,10 @@ import ConfirmDialog from '@/components/common/ConfirmDialog';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/context/AuthContext';
-import type { Order, OrderFormData, OrderItemFormData, OrderStatus, PaginatedOrders, Supplier } from '@/types';
+import type {
+  Order, OrderFormData, OrderItemFormData, OrderItemType,
+  OrderStatus, PaginatedOrders, Supplier,
+} from '@/types';
 
 const STATUSES: OrderStatus[] = ['Draft', 'Submitted', 'Approved', 'Ordered', 'Received', 'Cancelled'];
 
@@ -19,48 +22,142 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   Cancelled: 'bg-red-100 text-red-600',
 };
 
-const UNITS = ['pcs', 'ml', 'L', 'mg', 'g', 'kg', 'box', 'pack', 'bottle', 'vial', 'roll', 'set'];
+const ORDER_ITEM_TYPES: OrderItemType[] = ['Chemical', 'Glassware', 'Consumable', 'Equipment', 'Instrument'];
 
-const emptyItem = (): OrderItemFormData => ({ item_name: '', quantity: '', unit: 'pcs', unit_price: '', notes: '' });
+const ENDPOINTS: Record<OrderItemType, string> = {
+  Chemical: '/chemicals?limit=500',
+  Glassware: '/glassware?limit=500',
+  Consumable: '/consumables?limit=500',
+  Equipment: '/equipment?limit=500',
+  Instrument: '/instruments?limit=500',
+};
 
-function OrderForm({ initial, suppliers, onSubmit, loading }: {
+type InventoryItem = { id: number; name: string; unit?: string | null };
+
+const UNITS_BY_TYPE: Record<OrderItemType, string[]> = {
+  Chemical:   ['ml', 'L', 'μL', 'mg', 'g', 'kg', 'mol', 'mmol', 'bottle', 'vial', 'pack'],
+  Glassware:  ['pcs', 'set', 'pair', 'box', 'pack'],
+  Consumable: ['box', 'pack', 'pcs', 'pair', 'roll', 'bag', 'sheet', 'set'],
+  Equipment:  ['unit', 'pcs', 'set'],
+  Instrument: ['unit', 'pcs', 'set'],
+};
+
+const emptyOrderItem = (): OrderItemFormData => ({
+  item_type: 'Chemical', item_id: '', quantity: '', unit: '', unit_price: '', notes: '',
+});
+
+function OrderItemRow({
+  idx, item, itemsCache, onChangeType, onChangeField, onRemove, canRemove,
+}: {
+  idx: number;
+  item: OrderItemFormData;
+  itemsCache: Record<OrderItemType, InventoryItem[]>;
+  onChangeType: (type: OrderItemType) => void;
+  onChangeField: (k: keyof OrderItemFormData, v: string) => void;
+  onRemove: () => void;
+  canRemove: boolean;
+}) {
+  const options = itemsCache[item.item_type] ?? [];
+  const selected = options.find((o) => o.id === Number(item.item_id));
+  const listId = `units-${idx}`;
+
+  const handleItemChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const chosenItem = options.find((o) => o.id === Number(e.target.value));
+    onChangeField('item_id', e.target.value);
+    if (chosenItem?.unit) onChangeField('unit', chosenItem.unit);
+  };
+
+  return (
+    <div className="grid grid-cols-12 gap-2 p-3 bg-gray-50 rounded-lg items-start">
+      <div className="col-span-3">
+        <select className="input text-sm" value={item.item_type} onChange={(e) => onChangeType(e.target.value as OrderItemType)}>
+          {ORDER_ITEM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+      <div className="col-span-4">
+        <select className="input text-sm" value={item.item_id as string} onChange={handleItemChange} required>
+          <option value="">{options.length ? '— Select —' : 'Loading...'}</option>
+          {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+      </div>
+      <div className="col-span-2">
+        <input type="number" step="1" min="1" className="input text-sm" value={item.quantity as string}
+          onChange={(e) => onChangeField('quantity', e.target.value)} placeholder="Qty" required />
+      </div>
+      <div className="col-span-2">
+        <input className="input text-sm" list={listId} value={item.unit}
+          onChange={(e) => onChangeField('unit', e.target.value)}
+          placeholder={selected?.unit ?? 'Search unit...'} />
+        <datalist id={listId}>
+          {UNITS_BY_TYPE[item.item_type].map((u) => <option key={u} value={u} />)}
+        </datalist>
+      </div>
+      <div className="col-span-1 flex items-center justify-center pt-1">
+        {canRemove && (
+          <button type="button" onClick={onRemove} className="text-red-400 hover:text-red-600">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OrderForm({
+  initial, suppliers, onSubmit, loading,
+}: {
   initial: Order | null; suppliers: Supplier[];
   onSubmit: (f: OrderFormData) => void; loading: boolean;
 }) {
   const [form, setForm] = useState<OrderFormData>(
     initial
       ? {
-          supplier_id: initial.supplier_id,
+          supplier_id: initial.supplier_id ?? '',
           expected_delivery: initial.expected_delivery ?? '',
           notes: initial.notes ?? '',
           items: initial.items?.map((i) => ({
-            item_name: i.item_name, quantity: i.quantity, unit: i.unit,
+            item_type: i.item_type, item_id: i.item_id,
+            quantity: i.quantity, unit: i.unit ?? '',
             unit_price: i.unit_price ?? '', notes: i.notes ?? '',
-          })) ?? [emptyItem()],
+          })) ?? [emptyOrderItem()],
         }
-      : { supplier_id: '', expected_delivery: '', notes: '', items: [emptyItem()] }
+      : { supplier_id: '', expected_delivery: '', notes: '', items: [emptyOrderItem()] }
   );
+
+  const [itemsCache, setItemsCache] = useState<Record<OrderItemType, InventoryItem[]>>({
+    Chemical: [], Glassware: [], Consumable: [], Equipment: [], Instrument: [],
+  });
+
+  // Load all item types once
+  useEffect(() => {
+    ORDER_ITEM_TYPES.forEach((t) => {
+      api.get<{ items: InventoryItem[] }>(ENDPOINTS[t])
+        .then((r) => setItemsCache((c) => ({ ...c, [t]: r.data?.items ?? [] })))
+        .catch(() => {});
+    });
+  }, []);
 
   const setTop = <K extends keyof Omit<OrderFormData, 'items'>>(k: K, v: OrderFormData[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
-  const setItem = (idx: number, k: keyof OrderItemFormData, v: string | number) =>
+
+  const setItemField = (idx: number, k: keyof OrderItemFormData, v: string) =>
     setForm((f) => ({ ...f, items: f.items.map((it, i) => i === idx ? { ...it, [k]: v } : it) }));
-  const addItem = () => setForm((f) => ({ ...f, items: [...f.items, emptyItem()] }));
+
+  const setItemType = (idx: number, type: OrderItemType) =>
+    setForm((f) => ({ ...f, items: f.items.map((it, i) => i === idx ? { ...it, item_type: type, item_id: '' } : it) }));
+
+  const addItem = () => setForm((f) => ({ ...f, items: [...f.items, emptyOrderItem()] }));
   const removeItem = (idx: number) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
 
-  const total = form.items.reduce((sum, i) => {
-    const q = Number(i.quantity) || 0;
-    const p = Number(i.unit_price) || 0;
-    return sum + q * p;
-  }, 0);
-
   return (
-    <form onSubmit={(e: FormEvent) => { e.preventDefault(); onSubmit(form); }} className="space-y-5">
+    <form onSubmit={(e: FormEvent) => { e.preventDefault(); onSubmit(form); }} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label">Supplier *</label>
-          <select className="input" value={form.supplier_id as string} onChange={(e) => setTop('supplier_id', e.target.value)} required>
-            <option value="">-- Select Supplier --</option>
+          <label className="label">Supplier</label>
+          <select className="input" value={form.supplier_id as string} onChange={(e) => setTop('supplier_id', e.target.value)}>
+            <option value="">— None —</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
@@ -70,7 +167,7 @@ function OrderForm({ initial, suppliers, onSubmit, loading }: {
         </div>
         <div className="col-span-2">
           <label className="label">Notes</label>
-          <textarea className="input" rows={2} value={form.notes} onChange={(e) => setTop('notes', e.target.value)} placeholder="Order instructions, delivery notes..." />
+          <textarea className="input" rows={2} value={form.notes} onChange={(e) => setTop('notes', e.target.value)} placeholder="Order instructions..." />
         </div>
       </div>
 
@@ -79,43 +176,33 @@ function OrderForm({ initial, suppliers, onSubmit, loading }: {
           <label className="label mb-0">Order Items *</label>
           <button type="button" onClick={addItem} className="text-xs text-blue-600 hover:text-blue-700 font-medium">+ Add Item</button>
         </div>
-        <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-hide pr-1">
-          {form.items.map((item, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-2 p-3 bg-gray-50 rounded-lg">
-              <div className="col-span-4">
-                <input className="input text-sm" value={item.item_name} onChange={(e) => setItem(idx, 'item_name', e.target.value)} placeholder="Item / Chemical name" required />
-              </div>
-              <div className="col-span-2">
-                <input type="number" step="0.001" min="0" className="input text-sm" value={item.quantity as string} onChange={(e) => setItem(idx, 'quantity', e.target.value)} placeholder="Qty" required />
-              </div>
-              <div className="col-span-2">
-                <select className="input text-sm" value={item.unit} onChange={(e) => setItem(idx, 'unit', e.target.value)}>
-                  {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <input type="number" step="0.01" min="0" className="input text-sm" value={item.unit_price as string} onChange={(e) => setItem(idx, 'unit_price', e.target.value)} placeholder="Unit price" />
-              </div>
-              <div className="col-span-1 flex items-center justify-center">
-                <span className="text-xs text-gray-500">${((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)).toFixed(2)}</span>
-              </div>
-              <div className="col-span-1 flex items-center justify-center">
-                {form.items.length > 1 && (
-                  <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+        <div className="grid grid-cols-12 gap-2 px-3 py-1 text-xs font-medium text-gray-400 uppercase">
+          <div className="col-span-3">Type</div>
+          <div className="col-span-4">Item</div>
+          <div className="col-span-2">Qty</div>
+          <div className="col-span-2">Unit</div>
+          <div className="col-span-1"></div>
         </div>
-        <div className="flex justify-end mt-2">
-          <p className="text-sm font-semibold text-gray-700">Estimated Total: <span className="text-blue-600">${total.toFixed(2)}</span></p>
+        <div className="space-y-2 max-h-72 overflow-y-auto scrollbar-hide pr-1">
+          {form.items.map((item, idx) => (
+            <OrderItemRow
+              key={idx}
+              idx={idx}
+              item={item}
+              itemsCache={itemsCache}
+              onChangeType={(type) => setItemType(idx, type)}
+              onChangeField={(k, v) => setItemField(idx, k, v)}
+              onRemove={() => removeItem(idx)}
+              canRemove={form.items.length > 1}
+            />
+          ))}
         </div>
       </div>
 
       <div className="flex justify-end pt-2">
-        <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving...' : initial ? 'Update Order' : 'Create Order'}</button>
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Saving...' : initial ? 'Update Order' : 'Create Order'}
+        </button>
       </div>
     </form>
   );
@@ -157,45 +244,67 @@ export default function OrdersPage() {
   const handleSave = async (form: OrderFormData) => {
     setSaving(true);
     try {
-      if (editItem) { await api.put(`/orders/${editItem.id}`, form); toast.success('Order updated'); }
-      else { await api.post('/orders', form); toast.success('Order created'); }
+      const payload = {
+        ...form,
+        supplier_id: form.supplier_id || undefined,
+        expected_delivery: form.expected_delivery || undefined,
+        items: form.items.map((i) => ({
+          item_type: i.item_type,
+          item_id: Number(i.item_id),
+          quantity: Number(i.quantity),
+          unit: i.unit || undefined,
+          unit_price: i.unit_price !== '' ? Number(i.unit_price) : undefined,
+          notes: i.notes || undefined,
+        })),
+      };
+      if (editItem) { await api.put(`/orders/${editItem.id}`, payload); toast.success('Order updated'); }
+      else { await api.post('/orders', payload); toast.success('Order created'); }
       setFormModal(false); setEditItem(null); fetchOrders();
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      toast.error(e.response?.data?.error ?? 'Failed');
+      const e = err as { response?: { data?: { error?: string; errors?: { msg: string }[] } } };
+      toast.error(e.response?.data?.error ?? e.response?.data?.errors?.[0]?.msg ?? 'Failed');
     } finally { setSaving(false); }
   };
 
-  const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+  const handleStatusChange = async (order: Order, newStatus: OrderStatus, applyStock = false) => {
     try {
-      await api.put(`/orders/${order.id}/status`, { status: newStatus });
+      await api.put(`/orders/${order.id}/status`, { status: newStatus, apply_stock_update: applyStock });
       toast.success(`Order ${newStatus.toLowerCase()}`);
       fetchOrders();
-    } catch { toast.error('Failed to update status'); }
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'Failed to update status');
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setSaving(true);
     try { await api.delete(`/orders/${deleteTarget.id}`); toast.success('Deleted'); setDeleteTarget(null); fetchOrders(); }
-    catch { toast.error('Failed'); }
-    finally { setSaving(false); }
+    catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'Failed');
+    } finally { setSaving(false); }
   };
 
-  const statusCounts = STATUSES.reduce<Record<string, number>>((a, s) => ({ ...a, [s]: orders.filter((o) => o.status === s).length }), {});
+  const handleViewOrder = async (order: Order) => {
+    try {
+      const r = await api.get<Order>(`/orders/${order.id}`);
+      setViewOrder(r.data);
+    } catch { setViewOrder(order); }
+  };
 
-  const nextStatus: Partial<Record<OrderStatus, OrderStatus>> = {
+  const FORWARD: Partial<Record<OrderStatus, OrderStatus>> = {
     Draft: 'Submitted', Submitted: 'Approved', Approved: 'Ordered', Ordered: 'Received',
   };
 
   return (
     <AppLayout title="Orders">
       <div className="space-y-4">
-        {/* Status counts */}
         <div className="flex flex-wrap gap-2">
-          {STATUSES.slice(0, 5).map((s) => (
+          {STATUSES.map((s) => (
             <div key={s} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${STATUS_COLORS[s]}`}>
-              {s} <span className="font-bold">({statusCounts[s] ?? 0})</span>
+              {s} <span className="font-bold">({orders.filter((o) => o.status === s).length})</span>
             </div>
           ))}
         </div>
@@ -233,16 +342,25 @@ export default function OrdersPage() {
                     <td className="table-cell font-mono text-sm font-medium text-gray-800">{order.order_number}</td>
                     <td className="table-cell font-medium">{order.supplier_name ?? '—'}</td>
                     <td className="table-cell text-gray-500 text-sm">{order.branch_name ?? '—'}</td>
-                    <td className="table-cell text-gray-500 text-sm">{order.item_count ?? 0} item(s)</td>
-                    <td className="table-cell text-gray-700 text-sm">{order.total_amount != null ? `$${Number(order.total_amount).toFixed(2)}` : '—'}</td>
-                    <td className="table-cell text-gray-500 text-sm">{order.expected_delivery ? new Date(order.expected_delivery).toLocaleDateString() : '—'}</td>
+                    <td className="table-cell text-gray-500 text-sm">{order.item_count ?? 0}</td>
+                    <td className="table-cell text-gray-700 text-sm">
+                      {order.total_amount != null ? `$${Number(order.total_amount).toFixed(2)}` : '—'}
+                    </td>
+                    <td className="table-cell text-gray-500 text-sm">
+                      {order.expected_delivery ? new Date(order.expected_delivery).toLocaleDateString() : '—'}
+                    </td>
                     <td className="table-cell"><span className={`badge ${STATUS_COLORS[order.status]}`}>{order.status}</span></td>
                     <td className="table-cell">
                       <div className="flex gap-1.5 flex-wrap">
-                        <button onClick={() => setViewOrder(order)} className="text-xs btn-secondary py-1 px-2">View</button>
-                        {canCreate && nextStatus[order.status] && (
-                          <button onClick={() => handleStatusChange(order, nextStatus[order.status]!)} className="text-xs btn-primary py-1 px-2">
-                            → {nextStatus[order.status]}
+                        <button onClick={() => handleViewOrder(order)} className="text-xs btn-secondary py-1 px-2">View</button>
+                        {canCreate && FORWARD[order.status] && order.status !== 'Ordered' && (
+                          <button onClick={() => handleStatusChange(order, FORWARD[order.status]!)}
+                            className="text-xs btn-primary py-1 px-2">→ {FORWARD[order.status]}</button>
+                        )}
+                        {canCreate && order.status === 'Ordered' && (
+                          <button onClick={() => handleStatusChange(order, 'Received', true)}
+                            className="text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg py-1 px-2">
+                            → Received + Stock
                           </button>
                         )}
                         {canCreate && order.status === 'Draft' && (
@@ -271,42 +389,52 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      <Modal open={formModal} onClose={() => { setFormModal(false); setEditItem(null); }} title={editItem ? 'Edit Order' : 'New Purchase Order'} size="xl">
+      <Modal open={formModal} onClose={() => { setFormModal(false); setEditItem(null); }}
+        title={editItem ? 'Edit Order' : 'New Purchase Order'} size="xl">
         <OrderForm initial={editItem} suppliers={suppliers} onSubmit={handleSave} loading={saving} />
       </Modal>
 
-      {/* View order detail */}
+      {/* View order detail modal */}
       <Modal open={!!viewOrder} onClose={() => setViewOrder(null)} title={`Order ${viewOrder?.order_number}`} size="lg">
         {viewOrder && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><p className="text-gray-400 text-xs mb-0.5">Supplier</p><p className="font-medium">{viewOrder.supplier_name}</p></div>
+              <div><p className="text-gray-400 text-xs mb-0.5">Supplier</p><p className="font-medium">{viewOrder.supplier_name ?? '—'}</p></div>
               <div><p className="text-gray-400 text-xs mb-0.5">Status</p><span className={`badge ${STATUS_COLORS[viewOrder.status]}`}>{viewOrder.status}</span></div>
               <div><p className="text-gray-400 text-xs mb-0.5">Branch</p><p>{viewOrder.branch_name ?? '—'}</p></div>
-              <div><p className="text-gray-400 text-xs mb-0.5">Expected Delivery</p><p>{viewOrder.expected_delivery ? new Date(viewOrder.expected_delivery).toLocaleDateString() : '—'}</p></div>
+              <div><p className="text-gray-400 text-xs mb-0.5">Expected Delivery</p>
+                <p>{viewOrder.expected_delivery ? new Date(viewOrder.expected_delivery).toLocaleDateString() : '—'}</p></div>
               {viewOrder.notes && <div className="col-span-2"><p className="text-gray-400 text-xs mb-0.5">Notes</p><p>{viewOrder.notes}</p></div>}
             </div>
             {viewOrder.items && viewOrder.items.length > 0 && (
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Items</p>
                 <table className="w-full text-sm">
-                  <thead><tr className="bg-gray-50"><th className="text-left px-3 py-2 text-xs text-gray-500">Item</th><th className="text-right px-3 py-2 text-xs text-gray-500">Qty</th><th className="text-right px-3 py-2 text-xs text-gray-500">Unit Price</th><th className="text-right px-3 py-2 text-xs text-gray-500">Total</th></tr></thead>
+                  <thead><tr className="bg-gray-50">
+                    <th className="text-left px-3 py-2 text-xs text-gray-500">Type</th>
+                    <th className="text-left px-3 py-2 text-xs text-gray-500">Item</th>
+                    <th className="text-right px-3 py-2 text-xs text-gray-500">Qty</th>
+                    <th className="text-right px-3 py-2 text-xs text-gray-500">Unit</th>
+                  </tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {viewOrder.items.map((it, i) => (
-                      <tr key={i}><td className="px-3 py-2">{it.item_name}</td><td className="px-3 py-2 text-right">{it.quantity} {it.unit}</td><td className="px-3 py-2 text-right">{it.unit_price != null ? `$${it.unit_price}` : '—'}</td><td className="px-3 py-2 text-right font-medium">{it.total_price != null ? `$${Number(it.total_price).toFixed(2)}` : '—'}</td></tr>
+                      <tr key={i}>
+                        <td className="px-3 py-2 text-xs text-gray-400">{it.item_type}</td>
+                        <td className="px-3 py-2 font-medium">{it.item_name}</td>
+                        <td className="px-3 py-2 text-right font-semibold">{it.quantity}</td>
+                        <td className="px-3 py-2 text-right text-gray-500">{it.unit ?? '—'}</td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
-                {viewOrder.total_amount != null && (
-                  <div className="flex justify-end mt-2 font-semibold text-gray-700">Total: ${Number(viewOrder.total_amount).toFixed(2)}</div>
-                )}
               </div>
             )}
           </div>
         )}
       </Modal>
 
-      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="Delete Order" message={`Delete order "${deleteTarget?.order_number}"?`} loading={saving} />
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
+        title="Delete Order" message={`Delete order "${deleteTarget?.order_number}"? This cannot be undone.`} loading={saving} />
     </AppLayout>
   );
 }
