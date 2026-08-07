@@ -15,7 +15,9 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (res: AxiosResponse) => res,
   (err) => {
-    if (err.response?.status === 401 || err.response?.status === 403) {
+    // 401 = token missing/expired → log out and redirect to login
+    // 403 = authenticated but forbidden → do NOT log out (user is still logged in)
+    if (err.response?.status === 401) {
       Cookies.remove('token');
       Cookies.remove('user');
       if (typeof window !== 'undefined') window.location.href = '/login';

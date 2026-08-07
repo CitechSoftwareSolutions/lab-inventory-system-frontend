@@ -11,15 +11,26 @@ import type {
   OrderStatus, PaginatedOrders, Supplier,
 } from '@/types';
 
-const STATUSES: OrderStatus[] = ['Draft', 'Submitted', 'Approved', 'Ordered', 'Received', 'Cancelled'];
+type ReceivedItem = {
+  item_type: string;
+  item_id: number;
+  item_name: string;
+  quantity: number;
+  unit: string;
+  unit_price: string;
+  included: boolean;
+};
+
+const STATUSES: OrderStatus[] = ['Draft', 'Submitted', 'Approved', 'Rejected', 'Ordered', 'Received', 'Cancelled'];
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
   Draft: 'bg-gray-100 text-gray-600',
   Submitted: 'bg-blue-100 text-blue-700',
   Approved: 'bg-indigo-100 text-indigo-700',
+  Rejected: 'bg-red-100 text-red-700',
   Ordered: 'bg-amber-100 text-amber-700',
   Received: 'bg-green-100 text-green-700',
-  Cancelled: 'bg-red-100 text-red-600',
+  Cancelled: 'bg-gray-100 text-gray-500',
 };
 
 const ORDER_ITEM_TYPES: OrderItemType[] = ['Chemical', 'Glassware', 'Consumable', 'Equipment', 'Instrument'];
@@ -200,7 +211,8 @@ function OrderForm({
       </div>
 
       <div className="flex justify-end pt-2">
-        <button type="submit" className="btn-primary" disabled={loading}>
+        <button type="submit" className="btn-primary flex items-center gap-2" disabled={loading}>
+          {loading && <svg className="animate-spin w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
           {loading ? 'Saving...' : initial ? 'Update Order' : 'Create Order'}
         </button>
       </div>
@@ -221,8 +233,16 @@ export default function OrdersPage() {
   const [editItem, setEditItem] = useState<Order | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Order | null>(null);
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
+  const [receivedOrder, setReceivedOrder] = useState<Order | null>(null);
+  const [receivedItems, setReceivedItems] = useState<ReceivedItem[]>([]);
+  const [receivedInvoiceNum, setReceivedInvoiceNum] = useState('');
+  const [receivedInvoiceDate, setReceivedInvoiceDate] = useState('');
+  const [rejectTarget, setRejectTarget] = useState<Order | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
   const [saving, setSaving] = useState(false);
-  const canCreate = user?.role === 'super_admin' || user?.role === 'branch_manager';
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const isManager = user?.role === 'super_admin' || user?.role === 'branch_manager';
+  const canCreate = isManager || user?.role === 'stock_keeper';
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -266,15 +286,50 @@ export default function OrdersPage() {
     } finally { setSaving(false); }
   };
 
-  const handleStatusChange = async (order: Order, newStatus: OrderStatus, applyStock = false) => {
+  const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+    setActionLoading(String(order.id));
     try {
-      await api.put(`/orders/${order.id}/status`, { status: newStatus, apply_stock_update: applyStock });
+      await api.put(`/orders/${order.id}/status`, { status: newStatus });
       toast.success(`Order ${newStatus.toLowerCase()}`);
       fetchOrders();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       toast.error(e.response?.data?.error ?? 'Failed to update status');
-    }
+    } finally { setActionLoading(null); }
+  };
+
+  const handleMarkReceived = async () => {
+    if (!receivedOrder) return;
+    setSaving(true);
+    try {
+      const included = receivedItems.filter((i) => i.included);
+      if (included.length > 0 && receivedInvoiceNum.trim()) {
+        await api.post('/invoices', {
+          invoice_number: receivedInvoiceNum.trim(),
+          supplier_id: receivedOrder.supplier_id,
+          order_id: receivedOrder.id,
+          invoice_date: receivedInvoiceDate || new Date().toISOString().slice(0, 10),
+          items: included.map((i) => ({
+            item_type: i.item_type,
+            item_id: i.item_id,
+            quantity: i.quantity,
+            unit: i.unit || undefined,
+            unit_price: i.unit_price !== '' ? Number(i.unit_price) : undefined,
+          })),
+        });
+      }
+      await api.put(`/orders/${receivedOrder.id}/status`, { status: 'Received' });
+      toast.success(
+        included.length > 0
+          ? 'Order received & invoice created — go to Invoices to add items to stock'
+          : 'Order marked as received'
+      );
+      setReceivedOrder(null);
+      fetchOrders();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'Failed');
+    } finally { setSaving(false); }
   };
 
   const handleDelete = async () => {
@@ -294,8 +349,29 @@ export default function OrdersPage() {
     } catch { setViewOrder(order); }
   };
 
-  const FORWARD: Partial<Record<OrderStatus, OrderStatus>> = {
-    Draft: 'Submitted', Submitted: 'Approved', Approved: 'Ordered', Ordered: 'Received',
+  const handleApprove = async (order: Order) => {
+    setActionLoading(String(order.id));
+    try {
+      await api.put(`/orders/${order.id}/status`, { status: 'Approved' });
+      toast.success('Order approved');
+      fetchOrders();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'Failed');
+    } finally { setActionLoading(null); }
+  };
+
+  const handleReject = async () => {
+    if (!rejectTarget || !rejectionReason.trim()) return;
+    setSaving(true);
+    try {
+      await api.put(`/orders/${rejectTarget.id}/status`, { status: 'Rejected', rejection_reason: rejectionReason.trim() });
+      toast.success('Order rejected');
+      setRejectTarget(null); setRejectionReason(''); fetchOrders();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'Failed');
+    } finally { setSaving(false); }
   };
 
   return (
@@ -344,7 +420,7 @@ export default function OrdersPage() {
                     <td className="table-cell text-gray-500 text-sm">{order.branch_name ?? '—'}</td>
                     <td className="table-cell text-gray-500 text-sm">{order.item_count ?? 0}</td>
                     <td className="table-cell text-gray-700 text-sm">
-                      {order.total_amount != null ? `$${Number(order.total_amount).toFixed(2)}` : '—'}
+                      {order.total_amount != null ? `Rs. ${Number(order.total_amount).toFixed(2)}` : '—'}
                     </td>
                     <td className="table-cell text-gray-500 text-sm">
                       {order.expected_delivery ? new Date(order.expected_delivery).toLocaleDateString() : '—'}
@@ -353,20 +429,61 @@ export default function OrdersPage() {
                     <td className="table-cell">
                       <div className="flex gap-1.5 flex-wrap">
                         <button onClick={() => handleViewOrder(order)} className="text-xs btn-secondary py-1 px-2">View</button>
-                        {canCreate && FORWARD[order.status] && order.status !== 'Ordered' && (
-                          <button onClick={() => handleStatusChange(order, FORWARD[order.status]!)}
-                            className="text-xs btn-primary py-1 px-2">→ {FORWARD[order.status]}</button>
-                        )}
-                        {canCreate && order.status === 'Ordered' && (
-                          <button onClick={() => handleStatusChange(order, 'Received', true)}
-                            className="text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg py-1 px-2">
-                            → Received + Stock
+                        {/* Submit (Draft → Submitted) */}
+                        {canCreate && order.status === 'Draft' && (
+                          <button onClick={() => handleStatusChange(order, 'Submitted')} disabled={actionLoading === String(order.id)} className="text-xs btn-primary py-1 px-2 flex items-center gap-1">
+                            {actionLoading === String(order.id) && <svg className="animate-spin w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
+                            Submit
                           </button>
                         )}
-                        {canCreate && order.status === 'Draft' && (
+                        {/* Manager: Approve / Reject Submitted orders */}
+                        {isManager && order.status === 'Submitted' && (
+                          <>
+                            <button onClick={() => handleApprove(order)} disabled={actionLoading === String(order.id)} className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-1 px-2 flex items-center gap-1">
+                              {actionLoading === String(order.id) && <svg className="animate-spin w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
+                              Approve
+                            </button>
+                            <button onClick={() => { setRejectTarget(order); setRejectionReason(''); }} className="text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg py-1 px-2">Reject</button>
+                          </>
+                        )}
+                        {/* Approved → Ordered: stock_keeper or manager (one of them contacts supplier) */}
+                        {canCreate && order.status === 'Approved' && (
+                          <button onClick={() => handleStatusChange(order, 'Ordered')} disabled={actionLoading === String(order.id)} className="text-xs btn-primary py-1 px-2 flex items-center gap-1">
+                            {actionLoading === String(order.id) && <svg className="animate-spin w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
+                            → Ordered
+                          </button>
+                        )}
+                        {/* Receive stock */}
+                        {canCreate && order.status === 'Ordered' && (
+                          <button
+                            onClick={async () => {
+                              const today = new Date().toISOString().slice(0, 10);
+                              setReceivedOrder(order);
+                              setReceivedInvoiceNum(`INV-${order.order_number}-${today.replace(/-/g, '')}`);
+                              setReceivedInvoiceDate(today);
+                              try {
+                                const r = await api.get<Order>(`/orders/${order.id}`);
+                                setReceivedItems((r.data.items ?? []).map((it) => ({
+                                  item_type: it.item_type,
+                                  item_id: it.item_id,
+                                  item_name: it.item_name ?? '',
+                                  quantity: it.quantity,
+                                  unit: it.unit ?? '',
+                                  unit_price: it.unit_price != null ? String(it.unit_price) : '',
+                                  included: true,
+                                })));
+                              } catch { setReceivedItems([]); }
+                            }}
+                            className="text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg py-1 px-2">
+                            → Received
+                          </button>
+                        )}
+                        {/* Edit Draft or Rejected orders */}
+                        {canCreate && (order.status === 'Draft' || order.status === 'Rejected') && (
                           <button onClick={() => { setEditItem(order); setFormModal(true); }} className="text-xs btn-secondary py-1 px-2">Edit</button>
                         )}
-                        {user?.role === 'super_admin' && order.status === 'Draft' && (
+                        {/* Delete */}
+                        {isManager && (order.status === 'Draft' || order.status === 'Rejected') && (
                           <button onClick={() => setDeleteTarget(order)} className="text-xs text-red-600 hover:text-red-700 py-1 px-2">Delete</button>
                         )}
                       </div>
@@ -405,6 +522,12 @@ export default function OrdersPage() {
               <div><p className="text-gray-400 text-xs mb-0.5">Expected Delivery</p>
                 <p>{viewOrder.expected_delivery ? new Date(viewOrder.expected_delivery).toLocaleDateString() : '—'}</p></div>
               {viewOrder.notes && <div className="col-span-2"><p className="text-gray-400 text-xs mb-0.5">Notes</p><p>{viewOrder.notes}</p></div>}
+              {viewOrder.rejection_reason && (
+                <div className="col-span-2 bg-red-50 rounded-lg p-3 border border-red-100">
+                  <p className="text-red-500 text-xs font-semibold mb-0.5">Rejection Reason</p>
+                  <p className="text-red-700 text-sm">{viewOrder.rejection_reason}</p>
+                </div>
+              )}
             </div>
             {viewOrder.items && viewOrder.items.length > 0 && (
               <div>
@@ -435,6 +558,135 @@ export default function OrdersPage() {
 
       <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title="Delete Order" message={`Delete order "${deleteTarget?.order_number}"? This cannot be undone.`} loading={saving} />
+
+      {/* Reject order modal */}
+      <Modal open={!!rejectTarget} onClose={() => setRejectTarget(null)} title="Reject Order" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Rejecting <span className="font-semibold">{rejectTarget?.order_number}</span>. Please provide a reason.
+          </p>
+          <div>
+            <label className="label">Rejection Reason *</label>
+            <textarea className="input" rows={3} value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="Explain why this order is being rejected..." />
+          </div>
+          <div className="flex gap-3 justify-end pt-1">
+            <button className="btn-secondary" onClick={() => setRejectTarget(null)} disabled={saving}>Cancel</button>
+            <button className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-50 flex items-center gap-2"
+              onClick={handleReject} disabled={saving || !rejectionReason.trim()}>
+              {saving && <svg className="animate-spin w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
+              {saving ? 'Rejecting...' : 'Reject Order'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Mark as Received modal */}
+      <Modal open={!!receivedOrder} onClose={() => setReceivedOrder(null)} title={`Receive Order: ${receivedOrder?.order_number}`} size="lg">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Enter unit prices for each received item. Remove any items the supplier did not deliver — those will remain outstanding.
+            The invoice will be created and linked to this order. Stock is only added when you click <strong>Add to Inventory</strong> in the Invoices page.
+          </p>
+
+          {/* Invoice header */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Invoice Number</label>
+              <input className="input" value={receivedInvoiceNum}
+                onChange={(e) => setReceivedInvoiceNum(e.target.value)}
+                placeholder="Auto-generated — edit if needed" />
+            </div>
+            <div>
+              <label className="label">Invoice Date</label>
+              <input type="date" className="input" value={receivedInvoiceDate}
+                onChange={(e) => setReceivedInvoiceDate(e.target.value)} />
+            </div>
+          </div>
+
+          {/* Items table */}
+          {receivedItems.length > 0 ? (
+            <div>
+              <label className="label">Order Items</label>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="min-w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left text-xs font-medium text-gray-500 px-3 py-2">Item</th>
+                      <th className="text-left text-xs font-medium text-gray-500 px-3 py-2">Ordered</th>
+                      <th className="text-left text-xs font-medium text-gray-500 px-3 py-2 w-36">Unit Price (Rs.)</th>
+                      <th className="px-3 py-2 w-20"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {receivedItems.map((item, i) => (
+                      <tr key={i} className={item.included ? 'bg-white' : 'bg-red-50'}>
+                        <td className="px-3 py-2 text-sm">
+                          <span className={item.included ? 'text-gray-800' : 'line-through text-red-400'}>
+                            {item.item_name || `${item.item_type} #${item.item_id}`}
+                          </span>
+                          {!item.included && <span className="ml-2 text-xs text-red-500 font-medium">Not received</span>}
+                        </td>
+                        <td className="px-3 py-2 text-sm text-gray-500">{item.quantity} {item.unit}</td>
+                        <td className="px-3 py-2">
+                          {item.included && (
+                            <input
+                              type="number" min="0" step="0.01"
+                              className="input py-1 text-sm"
+                              placeholder="0.00"
+                              value={item.unit_price}
+                              onChange={(e) => setReceivedItems((prev) =>
+                                prev.map((it, j) => j === i ? { ...it, unit_price: e.target.value } : it)
+                              )}
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {item.included ? (
+                            <button
+                              onClick={() => setReceivedItems((prev) =>
+                                prev.map((it, j) => j === i ? { ...it, included: false } : it)
+                              )}
+                              className="text-xs text-red-500 hover:text-red-700 font-medium">Remove</button>
+                          ) : (
+                            <button
+                              onClick={() => setReceivedItems((prev) =>
+                                prev.map((it, j) => j === i ? { ...it, included: true } : it)
+                              )}
+                              className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">Restore</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Auto total */}
+              {(() => {
+                const total = receivedItems
+                  .filter((i) => i.included && i.unit_price !== '')
+                  .reduce((sum, i) => sum + Number(i.unit_price) * i.quantity, 0);
+                return total > 0 ? (
+                  <div className="text-right text-sm font-semibold text-gray-700 mt-2">
+                    Invoice Total: Rs. {total.toFixed(2)}
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-4">No items found for this order.</p>
+          )}
+
+          <div className="flex gap-3 justify-end pt-1 border-t">
+            <button className="btn-secondary" onClick={() => setReceivedOrder(null)} disabled={saving}>Cancel</button>
+            <button className="btn-primary flex items-center gap-2" onClick={handleMarkReceived} disabled={saving}>
+              {saving && <svg className="animate-spin w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
+              {saving ? 'Saving...' : receivedItems.some((i) => i.included) ? 'Mark Received & Create Invoice' : 'Mark as Received'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </AppLayout>
   );
 }

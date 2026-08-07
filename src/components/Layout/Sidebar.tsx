@@ -2,13 +2,16 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useState, useEffect } from 'react';
+import api from '@/lib/api';
 import type { UserRole } from '@/types';
 
 interface NavItem {
   href: string;
   label: string;
   icon: string;
-  roles?: UserRole[]; // undefined = all roles can see
+  roles?: UserRole[];
+  showPendingBadge?: boolean;
 }
 
 interface NavSection {
@@ -17,8 +20,8 @@ interface NavSection {
   items: NavItem[];
 }
 
-const ALL_ROLES: UserRole[] = ['super_admin', 'branch_manager', 'lab_technician'];
 const MANAGERS: UserRole[] = ['super_admin', 'branch_manager'];
+const STOCK_CAPABLE: UserRole[] = ['super_admin', 'branch_manager', 'stock_keeper'];
 const SUPER_ONLY: UserRole[] = ['super_admin'];
 
 const navSections: NavSection[] = [
@@ -72,6 +75,12 @@ const navSections: NavSection[] = [
         icon: 'M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4',
       },
       {
+        href: '/transactions',
+        label: 'Transactions',
+        icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4',
+        roles: STOCK_CAPABLE,
+      },
+      {
         href: '/maintenance',
         label: 'Maintenance',
         icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
@@ -87,13 +96,19 @@ const navSections: NavSection[] = [
         href: '/orders',
         label: 'Orders',
         icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01',
-        roles: MANAGERS,
+        roles: STOCK_CAPABLE,
+      },
+      {
+        href: '/invoices',
+        label: 'Invoices',
+        icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+        roles: STOCK_CAPABLE,
       },
       {
         href: '/suppliers',
         label: 'Suppliers',
         icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
-        roles: MANAGERS,
+        roles: STOCK_CAPABLE,
       },
     ],
   },
@@ -105,7 +120,14 @@ const navSections: NavSection[] = [
         href: '/categories',
         label: 'Categories',
         icon: 'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z',
+        roles: STOCK_CAPABLE,
+      },
+      {
+        href: '/approvals',
+        label: 'Approvals',
+        icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
         roles: MANAGERS,
+        showPendingBadge: true,
       },
       {
         href: '/branches',
@@ -124,15 +146,17 @@ const navSections: NavSection[] = [
 ];
 
 const ROLE_BADGE: Record<string, string> = {
-  super_admin: 'bg-rose-500/20 text-rose-300 border border-rose-500/25',
+  super_admin:    'bg-rose-500/20 text-rose-300 border border-rose-500/25',
   branch_manager: 'bg-sky-500/20 text-sky-300 border border-sky-500/25',
   lab_technician: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/25',
+  stock_keeper:   'bg-amber-500/20 text-amber-300 border border-amber-500/25',
 };
 
 const ROLE_LABELS: Record<string, string> = {
-  super_admin: 'Super Admin',
+  super_admin:    'Super Admin',
   branch_manager: 'Branch Manager',
   lab_technician: 'Lab Technician',
+  stock_keeper:   'Stock Keeper',
 };
 
 interface SidebarProps {
@@ -143,6 +167,22 @@ interface SidebarProps {
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const isManager = user?.role === 'super_admin' || user?.role === 'branch_manager';
+
+  useEffect(() => {
+    if (!isManager) return;
+    api.get<{ total: number }>('/approvals/pending')
+      .then((r) => setPendingCount(r.data?.total ?? 0))
+      .catch(() => {});
+    const interval = setInterval(() => {
+      api.get<{ total: number }>('/approvals/pending')
+        .then((r) => setPendingCount(r.data?.total ?? 0))
+        .catch(() => {});
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [isManager]);
 
   const name = user?.full_name ?? user?.username ?? 'User';
   const initials = name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
@@ -197,7 +237,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                   </div>
                 )}
                 <div className="space-y-0.5">
-                  {visibleItems.map(({ href, label, icon }) => {
+                  {visibleItems.map(({ href, label, icon, showPendingBadge }) => {
                     const active = pathname.startsWith(href);
                     return (
                       <Link
@@ -226,7 +266,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={active ? 2 : 1.6} d={icon} />
                         </svg>
                         <span>{label}</span>
-                        {active && <span className="ml-auto w-[6px] h-[6px] rounded-full bg-indigo-400 shadow-[0_0_6px_#6366f1]" />}
+                        {showPendingBadge && pendingCount > 0 && (
+                          <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow-sm">
+                            {pendingCount > 99 ? '99+' : pendingCount}
+                          </span>
+                        )}
+                        {!showPendingBadge && active && (
+                          <span className="ml-auto w-[6px] h-[6px] rounded-full bg-indigo-400 shadow-[0_0_6px_#6366f1]" />
+                        )}
                       </Link>
                     );
                   })}

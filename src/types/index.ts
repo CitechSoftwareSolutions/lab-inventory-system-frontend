@@ -1,6 +1,7 @@
 // ─── User & Auth ──────────────────────────────────────────────────────────────
 
-export type UserRole = 'super_admin' | 'branch_manager' | 'lab_technician';
+export type UserRole = 'super_admin' | 'branch_manager' | 'lab_technician' | 'stock_keeper';
+export type ApprovalStatus = 'Pending' | 'Approved' | 'Rejected';
 
 export interface User {
   id: number;
@@ -227,7 +228,7 @@ export interface PaginatedTransactions {
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
-export type OrderStatus = 'Draft' | 'Submitted' | 'Approved' | 'Ordered' | 'Received' | 'Cancelled';
+export type OrderStatus = 'Draft' | 'Submitted' | 'Approved' | 'Rejected' | 'Ordered' | 'Received' | 'Cancelled';
 export type OrderItemType = 'Chemical' | 'Glassware' | 'Consumable' | 'Equipment' | 'Instrument';
 
 export interface OrderItem {
@@ -255,6 +256,9 @@ export interface Order {
   expected_delivery: string | null;
   total_amount: number | null;
   notes: string | null;
+  rejection_reason?: string | null;
+  decided_by?: number | null;
+  decided_at?: string | null;
   created_by?: number | null;
   created_by_name?: string | null;
   item_count?: number;
@@ -283,6 +287,175 @@ export interface PaginatedOrders {
   total: number;
   page: number;
   pages: number;
+}
+
+// ─── Invoices ─────────────────────────────────────────────────────────────────
+
+export type InvoiceStatus = 'Unpaid' | 'Paid' | 'Cancelled';
+
+export interface InvoiceItem {
+  id?: number;
+  invoice_id?: number;
+  item_type: OrderItemType;
+  item_id: number;
+  item_name: string | null;
+  quantity: number;
+  unit: string | null;
+  unit_price: number | null;
+  discount: number | null;
+  total_price: number | null;
+  notes: string | null;
+}
+
+export interface Invoice {
+  id: number;
+  invoice_number: string;
+  supplier_id: number;
+  supplier_name?: string | null;
+  order_id: number | null;
+  order_number?: string | null;
+  branch_id: number;
+  branch_name?: string | null;
+  status: InvoiceStatus;
+  approval_status: ApprovalStatus;
+  approval_notes?: string | null;
+  decided_by?: number | null;
+  decided_at?: string | null;
+  is_closed: boolean;
+  invoice_date: string;
+  subtotal: number | null;
+  discount: number | null;
+  total_amount: number | null;
+  notes: string | null;
+  created_by_name?: string | null;
+  closed_by_name?: string | null;
+  closed_at?: string | null;
+  item_count?: number;
+  items?: InvoiceItem[];
+  created_at?: string;
+}
+
+export interface InvoiceItemFormData {
+  item_type: OrderItemType;
+  item_id: string | number;
+  quantity: string | number;
+  unit: string;
+  unit_price: string | number;
+  notes: string;
+}
+
+export interface InvoiceFormData {
+  invoice_number: string;
+  supplier_id: string | number;
+  order_id: string | number;
+  invoice_date: string;
+  discount: string | number;
+  notes: string;
+  items: InvoiceItemFormData[];
+}
+
+export interface PaginatedInvoices {
+  items: Invoice[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
+// ─── Supply / Branch Transactions (/api/transactions) ─────────────────────────
+
+export type SupplyTxType = 'SUPPLY_OUT' | 'BRANCH_OUT' | 'BRANCH_IN' | 'SUPPLY_IN' | 'ORDER_RECEIPT';
+
+export const SUPPLY_TX_LABELS: Record<SupplyTxType, string> = {
+  SUPPLY_OUT:    'Supply Out',
+  BRANCH_OUT:    'Branch Transfer Out',
+  BRANCH_IN:     'Branch Transfer In',
+  SUPPLY_IN:     'Supply In (System)',
+  ORDER_RECEIPT: 'Order Receipt (System)',
+};
+
+export const SUPPLY_TX_DIRECTION: Record<SupplyTxType, 'IN' | 'OUT'> = {
+  SUPPLY_OUT:    'OUT',
+  BRANCH_OUT:    'OUT',
+  BRANCH_IN:     'IN',
+  SUPPLY_IN:     'IN',
+  ORDER_RECEIPT: 'IN',
+};
+
+export interface SupplyTransaction {
+  id: number;
+  item_type: StockItemType;
+  item_id: number;
+  type: SupplyTxType;
+  quantity: number;
+  quantity_before: number | null;
+  quantity_after: number | null;
+  supplier_id: number | null;
+  related_branch_id: number | null;
+  reference_number: string | null;
+  notes: string | null;
+  branch_id: number | null;
+  performed_by: number | null;
+  approval_status: ApprovalStatus;
+  approval_notes: string | null;
+  decided_by: number | null;
+  decided_at: string | null;
+  item_name?: string | null;
+  unit?: string | null;
+  supplier_name?: string | null;
+  related_branch_name?: string | null;
+  order_number?: string | null;
+  performed_by_name?: string | null;
+  created_at: string;
+}
+
+export interface SupplyTxFormData {
+  item_type: StockItemType;
+  item_id: string | number;
+  type: 'SUPPLY_OUT' | 'BRANCH_OUT' | 'BRANCH_IN';
+  quantity: string | number;
+  supplier_id: string | number;
+  related_branch_id: string | number;
+  reference_number: string;
+  notes: string;
+}
+
+export interface PaginatedSupplyTransactions {
+  transactions: SupplyTransaction[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
+// ─── Notifications ─────────────────────────────────────────────────────────────
+
+export type NotificationRelatedType = 'Order' | 'Invoice' | 'Transaction';
+
+export interface AppNotification {
+  id: number;
+  type: string;
+  title: string;
+  message: string | null;
+  related_type: NotificationRelatedType | null;
+  related_id: number | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface PaginatedNotifications {
+  items: AppNotification[];
+  total: number;
+  unread_count: number;
+  page: number;
+  pages: number;
+}
+
+// ─── Pending Approvals ─────────────────────────────────────────────────────────
+
+export interface PendingApprovals {
+  orders: Order[];
+  invoices: Invoice[];
+  transactions: SupplyTransaction[];
+  total: number;
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
