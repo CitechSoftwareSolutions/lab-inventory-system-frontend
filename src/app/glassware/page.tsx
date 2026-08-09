@@ -136,6 +136,7 @@ export default function GlasswarePage() {
   const [deleteTarget, setDeleteTarget] = useState<Glassware | null>(null);
   const [saving, setSaving] = useState(false);
   const canEdit = user?.role === 'super_admin' || user?.role === 'branch_manager';
+  const canCreate = canEdit || user?.role === 'stock_keeper';
   const canDelete = user?.role === 'super_admin' || user?.role === 'branch_manager';
 
   const fetchItems = useCallback(async () => {
@@ -207,7 +208,7 @@ export default function GlasswarePage() {
               {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          {canEdit && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Glassware</button>}
+          {canCreate && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Glassware</button>}
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

@@ -173,6 +173,7 @@ export default function ChemicalsPage() {
   const [saving, setSaving] = useState(false);
   const canEdit = user?.role === 'super_admin' || user?.role === 'branch_manager';
   const canDelete = user?.role === 'super_admin' || user?.role === 'branch_manager';
+  const canCreate = canEdit || user?.role === 'stock_keeper';
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -240,7 +241,7 @@ export default function ChemicalsPage() {
               {HAZARD_CLASSES.map((h) => <option key={h} value={h}>{h}</option>)}
             </select>
           </div>
-          {canEdit && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Chemical</button>}
+          {canCreate && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Chemical</button>}
         </div>
 
         {/* Table */}

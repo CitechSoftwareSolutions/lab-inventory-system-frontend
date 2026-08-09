@@ -141,6 +141,7 @@ export default function InstrumentsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Instrument | null>(null);
   const [saving, setSaving] = useState(false);
   const canEdit = user?.role === 'super_admin' || user?.role === 'branch_manager';
+  const canCreate = canEdit || user?.role === 'stock_keeper';
   const canDelete = user?.role === 'super_admin' || user?.role === 'branch_manager';
 
   const fetchItems = useCallback(async () => {
@@ -213,7 +214,7 @@ export default function InstrumentsPage() {
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-          {canEdit && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Instrument</button>}
+          {canCreate && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Instrument</button>}
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

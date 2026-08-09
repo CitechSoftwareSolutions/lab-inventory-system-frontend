@@ -128,6 +128,7 @@ export default function CategoriesPage() {
   const [saving, setSaving] = useState(false);
   const canEdit = user?.role === 'super_admin' || user?.role === 'branch_manager';
   const canDelete = user?.role === 'super_admin' || user?.role === 'branch_manager';
+  const canCreate = canEdit || user?.role === 'stock_keeper';
 
   const fetchCategories = useCallback(async () => {
     setLoading(true);
@@ -210,7 +211,7 @@ export default function CategoriesPage() {
         </div>
 
         <div className="flex justify-end">
-          {canEdit && (
+          {canCreate && (
             <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>
               + Add Category
             </button>

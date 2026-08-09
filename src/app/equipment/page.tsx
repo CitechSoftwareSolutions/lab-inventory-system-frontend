@@ -146,6 +146,7 @@ export default function EquipmentPage() {
   const [deleteTarget, setDeleteTarget] = useState<Equipment | null>(null);
   const [saving, setSaving] = useState(false);
   const canEdit = user?.role === 'super_admin' || user?.role === 'branch_manager';
+  const canCreate = canEdit || user?.role === 'stock_keeper';
   const canDelete = user?.role === 'super_admin' || user?.role === 'branch_manager';
 
   const fetchItems = useCallback(async () => {
@@ -220,7 +221,7 @@ export default function EquipmentPage() {
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-          {canEdit && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Equipment</button>}
+          {canCreate && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Equipment</button>}
         </div>
 
         {/* Table */}
