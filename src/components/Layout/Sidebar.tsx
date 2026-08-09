@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 import type { UserRole } from '@/types';
 
 interface NavItem {
@@ -168,6 +169,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   const isManager = user?.role === 'super_admin' || user?.role === 'branch_manager';
 
@@ -301,7 +303,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             </div>
           </div>
           <button
-            onClick={logout}
+            onClick={() => setConfirmLogout(true)}
             className="group flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-[13px] text-slate-500 transition-all duration-150"
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = '#f1f5f9'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; (e.currentTarget as HTMLElement).style.color = ''; }}
@@ -313,6 +315,16 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
       </aside>
+
+      <ConfirmDialog
+        open={confirmLogout}
+        onClose={() => setConfirmLogout(false)}
+        onConfirm={logout}
+        title="Sign Out"
+        message="Are you sure you want to sign out?"
+        confirmLabel="Sign Out"
+        confirmClass="btn-danger"
+      />
     </>
   );
 }

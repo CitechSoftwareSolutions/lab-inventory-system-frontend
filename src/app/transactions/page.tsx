@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef, FormEvent } from 'react';
 import AppLayout from '@/components/Layout/AppLayout';
 import Modal from '@/components/common/Modal';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/context/AuthContext';
@@ -241,6 +242,7 @@ export default function TransactionsPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; run: () => void } | null>(null);
 
   const isManager = user?.role === 'super_admin' || user?.role === 'branch_manager';
   const canCreate = isManager || user?.role === 'stock_keeper';
@@ -394,7 +396,9 @@ export default function TransactionsPage() {
                       <td className="table-cell">
                         {isManager && tx.approval_status === 'Pending' && (
                           <div className="flex gap-1.5">
-                            <button onClick={() => handleApprove(tx)} disabled={actionLoading === String(tx.id)}
+                            <button
+                              onClick={() => setConfirmState({ title: 'Approve Transfer', message: `Approve this ${SUPPLY_TX_LABELS[tx.type]} of ${tx.quantity}? Stock will be updated immediately.`, run: () => handleApprove(tx) })}
+                              disabled={actionLoading === String(tx.id)}
                               className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-1 px-2 flex items-center gap-1">
                               {actionLoading === String(tx.id) && <svg className="animate-spin w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
                               Approve</button>
@@ -425,6 +429,16 @@ export default function TransactionsPage() {
       <Modal open={formModal} onClose={() => setFormModal(false)} title="New Transaction" size="md">
         <TransactionForm suppliers={suppliers} branches={branches} onSubmit={handleCreate} loading={saving} />
       </Modal>
+
+      <ConfirmDialog
+        open={!!confirmState}
+        onClose={() => setConfirmState(null)}
+        onConfirm={() => { confirmState?.run(); setConfirmState(null); }}
+        title={confirmState?.title}
+        message={confirmState?.message ?? ''}
+        confirmLabel="Confirm"
+        confirmClass="btn-primary"
+      />
 
       {/* Reject modal */}
       <Modal open={!!rejectTarget} onClose={() => setRejectTarget(null)} title="Reject Transaction" size="sm">

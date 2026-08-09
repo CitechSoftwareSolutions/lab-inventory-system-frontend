@@ -175,9 +175,9 @@ export default function LoginPage() {
             <h2 className="text-lg font-bold text-gray-900 mb-2">Login Failed</h2>
             <p className="text-gray-600 text-sm mb-6 leading-relaxed">{errorMsg}</p>
             <button
+              type="button"
               onClick={handleDismissError}
               className="btn-primary w-full py-2.5 text-sm"
-              autoFocus
             >
               OK — Try Again
             </button>

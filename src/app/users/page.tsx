@@ -134,6 +134,7 @@ export default function UsersPage() {
   const [editItem, setEditItem] = useState<User | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [saving, setSaving] = useState(false);
+  const canEdit = me?.role === 'super_admin' || me?.role === 'branch_manager';
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -183,7 +184,7 @@ export default function UsersPage() {
     <AppLayout title="Users">
       <div className="space-y-4">
         <div className="flex justify-end">
-          <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add User</button>
+          {canEdit && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add User</button>}
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -234,8 +235,8 @@ export default function UsersPage() {
                     </td>
                     <td className="table-cell">
                       <div className="flex gap-2">
-                        <button onClick={() => { setEditItem(u); setFormModal(true); }} className="text-xs btn-secondary py-1 px-2">Edit</button>
-                        {u.id !== me?.id && (
+                        {canEdit && <button onClick={() => { setEditItem(u); setFormModal(true); }} className="text-xs btn-secondary py-1 px-2">Edit</button>}
+                        {canEdit && u.id !== me?.id && (
                           <button onClick={() => setDeleteTarget(u)} className="text-xs text-red-600 hover:text-red-700 py-1 px-2">Delete</button>
                         )}
                       </div>

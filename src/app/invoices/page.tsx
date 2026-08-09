@@ -263,6 +263,7 @@ export default function InvoicesPage() {
   const [invoiceRejectReason, setInvoiceRejectReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; run: () => void } | null>(null);
   const isManager = user?.role === 'super_admin' || user?.role === 'branch_manager';
 
   const fetchInvoices = useCallback(async () => {
@@ -475,7 +476,9 @@ export default function InvoicesPage() {
                         {/* Manager: Approve / Reject pending invoices */}
                         {isManager && inv.approval_status === 'Pending' && !inv.is_closed && (
                           <>
-                            <button onClick={() => handleApproveInvoice(inv)} disabled={actionLoading === `${inv.id}-approve`}
+                            <button
+                              onClick={() => setConfirmState({ title: 'Approve Invoice', message: `Approve invoice ${inv.invoice_number}? It can then be closed to add its items to stock.`, run: () => handleApproveInvoice(inv) })}
+                              disabled={actionLoading === `${inv.id}-approve`}
                               className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-1 px-2 flex items-center gap-1">
                               {actionLoading === `${inv.id}-approve` && <svg className="animate-spin w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
                               Approve
@@ -493,7 +496,9 @@ export default function InvoicesPage() {
                         )}
                         {/* Mark Paid: visible even after closing — payment comes later */}
                         {inv.status === 'Unpaid' && (
-                          <button onClick={() => handleStatusChange(inv, 'Paid')} disabled={actionLoading === `${inv.id}-paid`}
+                          <button
+                            onClick={() => setConfirmState({ title: 'Mark Invoice Paid', message: `Mark invoice ${inv.invoice_number} as paid?`, run: () => handleStatusChange(inv, 'Paid') })}
+                            disabled={actionLoading === `${inv.id}-paid`}
                             className="text-xs text-green-600 hover:text-green-700 py-1 px-2 font-medium flex items-center gap-1">
                             {actionLoading === `${inv.id}-paid` && <svg className="animate-spin w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
                             Mark Paid
@@ -613,6 +618,16 @@ export default function InvoicesPage() {
       {/* Delete Confirm */}
       <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title="Delete Invoice" message={`Delete invoice "${deleteTarget?.invoice_number}"? This cannot be undone.`} loading={saving} />
+
+      <ConfirmDialog
+        open={!!confirmState}
+        onClose={() => setConfirmState(null)}
+        onConfirm={() => { confirmState?.run(); setConfirmState(null); }}
+        title={confirmState?.title}
+        message={confirmState?.message ?? ''}
+        confirmLabel="Confirm"
+        confirmClass="btn-primary"
+      />
 
       {/* Reject Invoice Modal */}
       <Modal open={!!rejectInvoiceTarget} onClose={() => setRejectInvoiceTarget(null)} title="Reject Invoice" size="sm">
