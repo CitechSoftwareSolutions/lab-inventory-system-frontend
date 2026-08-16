@@ -34,6 +34,7 @@ export interface Branch {
   address: string | null;
   phone: string | null;
   email: string | null;
+  is_head: boolean;
   is_active: boolean;
   user_count?: number;
   created_at?: string;
@@ -45,6 +46,7 @@ export interface BranchFormData {
   address: string;
   phone: string;
   email: string;
+  is_head: boolean;
 }
 
 // ─── Categories ───────────────────────────────────────────────────────────────
@@ -500,6 +502,7 @@ export type CapacityUnit = 'ml' | 'L' | 'μL';
 export interface Glassware {
   id: number;
   name: string;
+  barcode?: string | null;
   category_id: number | null;
   category_name?: string | null;
   capacity: number | null;
@@ -520,6 +523,7 @@ export interface Glassware {
 
 export interface GlasswareFormData {
   name: string;
+  barcode: string;
   category_id: string | number;
   capacity: string | number;
   capacity_unit: string;
@@ -545,6 +549,7 @@ export interface PaginatedGlassware {
 export interface Consumable {
   id: number;
   name: string;
+  barcode?: string | null;
   brand: string | null;
   category_id: number | null;
   category_name?: string | null;
@@ -566,6 +571,7 @@ export interface Consumable {
 
 export interface ConsumableFormData {
   name: string;
+  barcode: string;
   brand: string;
   category_id: string | number;
   batch_number: string;
@@ -598,6 +604,7 @@ export type PhysicalState = 'Solid' | 'Liquid' | 'Gas' | 'Solution';
 export interface Chemical {
   id: number;
   name: string;
+  barcode?: string | null;
   cas_number: string | null;
   molecular_formula: string | null;
   category_id: number | null;
@@ -621,6 +628,7 @@ export interface Chemical {
 
 export interface ChemicalFormData {
   name: string;
+  barcode: string;
   cas_number: string;
   molecular_formula: string;
   category_id: string | number;
@@ -651,6 +659,7 @@ export type EquipmentStatus = 'Available' | 'In Use' | 'Under Maintenance' | 'Re
 export interface Equipment {
   id: number;
   name: string;
+  barcode?: string | null;
   model: string | null;
   serial_number: string | null;
   manufacturer: string | null;
@@ -673,6 +682,7 @@ export interface Equipment {
 
 export interface EquipmentFormData {
   name: string;
+  barcode: string;
   model: string;
   serial_number: string;
   manufacturer: string;
@@ -702,6 +712,7 @@ export type InstrumentStatus = 'Operational' | 'Under Maintenance' | 'Out of Ser
 export interface Instrument {
   id: number;
   name: string;
+  barcode?: string | null;
   model: string | null;
   serial_number: string | null;
   manufacturer: string | null;
@@ -724,6 +735,7 @@ export interface Instrument {
 
 export interface InstrumentFormData {
   name: string;
+  barcode: string;
   model: string;
   serial_number: string;
   manufacturer: string;

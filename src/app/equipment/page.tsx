@@ -25,7 +25,7 @@ function isCalibrationSoon(date: string | null) {
 }
 
 const emptyForm = (): EquipmentFormData => ({
-  name: '', model: '', serial_number: '', manufacturer: '', category_id: '',
+  name: '', barcode: '', model: '', serial_number: '', manufacturer: '', category_id: '',
   status: 'Available', location: '', purchase_date: '', purchase_price: '',
   supplier_id: '', warranty_expiry: '', last_calibration: '', next_calibration: '', notes: '',
 });
@@ -41,7 +41,7 @@ interface EqFormProps {
 function EqForm({ initial, categories, suppliers, onSubmit, loading }: EqFormProps) {
   const [form, setForm] = useState<EquipmentFormData>(
     initial ? {
-      name: initial.name, model: initial.model ?? '', serial_number: initial.serial_number ?? '',
+      name: initial.name, barcode: initial.barcode ?? '', model: initial.model ?? '', serial_number: initial.serial_number ?? '',
       manufacturer: initial.manufacturer ?? '', category_id: initial.category_id ?? '',
       status: initial.status, location: initial.location ?? '', purchase_date: initial.purchase_date ?? '',
       purchase_price: initial.purchase_price ?? '', supplier_id: initial.supplier_id ?? '',
@@ -58,6 +58,10 @@ function EqForm({ initial, categories, suppliers, onSubmit, loading }: EqFormPro
         <div className="col-span-2">
           <label className="label">Name *</label>
           <input className="input" value={form.name} onChange={(e) => set('name', e.target.value)} required placeholder="e.g., Analytical Balance" />
+        </div>
+        <div className="col-span-2">
+          <label className="label">Barcode</label>
+          <input className="input" value={form.barcode} onChange={(e) => set('barcode', e.target.value)} placeholder="Scan or type barcode (optional)" />
         </div>
         <div>
           <label className="label">Model</label>
@@ -138,6 +142,9 @@ export default function EquipmentPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [calibrationFilter, setCalibrationFilter] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -155,12 +162,15 @@ export default function EquipmentPage() {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (search) params.set('search', search);
       if (statusFilter) params.set('status', statusFilter);
+      if (categoryFilter) params.set('category_id', categoryFilter);
+      if (supplierFilter) params.set('supplier_id', supplierFilter);
+      if (calibrationFilter) params.set('calibration_filter', calibrationFilter);
       const r = await api.get<PaginatedEquipment>(`/equipment?${params}`);
       setItems(r.data?.items ?? []);
       setTotalPages(r.data?.pages ?? 1);
       setTotal(r.data?.total ?? 0);
     } finally { setLoading(false); }
-  }, [search, statusFilter, page]);
+  }, [search, statusFilter, categoryFilter, supplierFilter, calibrationFilter, page]);
 
   useEffect(() => {
     fetchItems();
@@ -215,10 +225,23 @@ export default function EquipmentPage() {
         {/* Filters */}
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex flex-wrap gap-3 flex-1">
-            <input className="input max-w-xs" placeholder="Search equipment..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-            <select className="input max-w-[180px]" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+            <input className="input max-w-xs" placeholder="Search name, model, serial, barcode…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            <select className="input max-w-[170px]" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
               <option value="">All Statuses</option>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select className="input max-w-[180px]" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
+              <option value="">All Categories</option>
+              {categories.filter((c) => c.type === 'Equipment').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select className="input max-w-[160px]" value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }}>
+              <option value="">All Suppliers</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <select className="input max-w-[170px]" value={calibrationFilter} onChange={(e) => { setCalibrationFilter(e.target.value); setPage(1); }}>
+              <option value="">All Calibration</option>
+              <option value="overdue">Overdue</option>
+              <option value="due_soon">Due Soon (30d)</option>
             </select>
           </div>
           {canCreate && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Equipment</button>}

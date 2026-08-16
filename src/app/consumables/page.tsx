@@ -12,7 +12,7 @@ import type { Consumable, ConsumableFormData, PaginatedConsumables, Supplier, Ca
 const UNITS = ['box', 'pack', 'roll', 'pcs', 'pair', 'set', 'bag', 'sheet'];
 
 const emptyForm = (): ConsumableFormData => ({
-  name: '', brand: '', category_id: '', batch_number: '', quantity: '',
+  name: '', barcode: '', brand: '', category_id: '', batch_number: '', quantity: '',
   min_quantity: 0, unit: 'box', pack_size: '', expiry_date: '',
   location: '', supplier_id: '', price: '', notes: '',
 });
@@ -34,7 +34,7 @@ function ConsumableForm({ initial, suppliers, categories, onSubmit, loading }: {
 }) {
   const [form, setForm] = useState<ConsumableFormData>(
     initial ? {
-      name: initial.name, brand: initial.brand ?? '',
+      name: initial.name, barcode: initial.barcode ?? '', brand: initial.brand ?? '',
       category_id: initial.category_id ?? '',
       batch_number: initial.batch_number ?? '', quantity: initial.quantity,
       min_quantity: initial.min_quantity, unit: initial.unit,
@@ -51,6 +51,10 @@ function ConsumableForm({ initial, suppliers, categories, onSubmit, loading }: {
         <div className="col-span-2">
           <label className="label">Name *</label>
           <input className="input" value={form.name as string} onChange={(e) => set('name', e.target.value)} required placeholder="e.g., Nitrile Gloves Size M" />
+        </div>
+        <div className="col-span-2">
+          <label className="label">Barcode</label>
+          <input className="input" value={form.barcode as string} onChange={(e) => set('barcode', e.target.value)} placeholder="Scan or type barcode (optional)" />
         </div>
         <div>
           <label className="label">Category</label>
@@ -132,6 +136,8 @@ export default function ConsumablesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [expiryFilter, setExpiryFilter] = useState('');
   const [lowStock, setLowStock] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -149,13 +155,15 @@ export default function ConsumablesPage() {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (search) params.set('search', search);
       if (categoryFilter) params.set('category_id', categoryFilter);
+      if (supplierFilter) params.set('supplier_id', supplierFilter);
+      if (expiryFilter) params.set('expiry_filter', expiryFilter);
       if (lowStock) params.set('low_stock', 'true');
       const r = await api.get<PaginatedConsumables>(`/consumables?${params}`);
       setItems(r.data?.items ?? []);
       setTotalPages(r.data?.pages ?? 1);
       setTotal(r.data?.total ?? 0);
     } finally { setLoading(false); }
-  }, [search, categoryFilter, lowStock, page]);
+  }, [search, categoryFilter, supplierFilter, expiryFilter, lowStock, page]);
 
   useEffect(() => {
     fetchItems();
@@ -207,11 +215,20 @@ export default function ConsumablesPage() {
 
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex flex-wrap gap-3 flex-1">
-            <input className="input max-w-xs" placeholder="Search consumables..." value={search}
+            <input className="input max-w-xs" placeholder="Search name, brand, batch, barcode…" value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-            <select className="input max-w-[200px]" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
+            <select className="input max-w-[180px]" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
               <option value="">All Categories</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select className="input max-w-[160px]" value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }}>
+              <option value="">All Suppliers</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <select className="input max-w-[160px]" value={expiryFilter} onChange={(e) => { setExpiryFilter(e.target.value); setPage(1); }}>
+              <option value="">All Expiry</option>
+              <option value="expired">Expired</option>
+              <option value="expiring_soon">Expiring Soon (30d)</option>
             </select>
             <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
               <input type="checkbox" checked={lowStock} onChange={(e) => { setLowStock(e.target.checked); setPage(1); }} className="rounded" />

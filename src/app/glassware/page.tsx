@@ -21,7 +21,7 @@ const CONDITION_COLORS: Record<GlasswareCondition, string> = {
 const CONDITIONS: GlasswareCondition[] = ['Good', 'Fair', 'Poor', 'Broken'];
 
 const emptyForm = (): GlasswareFormData => ({
-  name: '', category_id: '', capacity: '', capacity_unit: 'ml', material: 'Borosilicate Glass',
+  name: '', barcode: '', category_id: '', capacity: '', capacity_unit: 'ml', material: 'Borosilicate Glass',
   quantity: '', min_quantity: 0, condition: 'Good', location: '', supplier_id: '', purchase_date: '', notes: '',
 });
 
@@ -31,7 +31,7 @@ function GlasswareForm({ initial, categories, suppliers, onSubmit, loading }: {
 }) {
   const [form, setForm] = useState<GlasswareFormData>(
     initial ? {
-      name: initial.name, category_id: initial.category_id ?? '',
+      name: initial.name, barcode: initial.barcode ?? '', category_id: initial.category_id ?? '',
       capacity: initial.capacity ?? '', capacity_unit: initial.capacity_unit || 'ml',
       material: initial.material ?? 'Borosilicate Glass', quantity: initial.quantity,
       min_quantity: initial.min_quantity, condition: initial.condition,
@@ -47,6 +47,10 @@ function GlasswareForm({ initial, categories, suppliers, onSubmit, loading }: {
         <div className="col-span-2">
           <label className="label">Name *</label>
           <input className="input" value={form.name as string} onChange={(e) => set('name', e.target.value)} required placeholder="e.g., 250ml Beaker" />
+        </div>
+        <div className="col-span-2">
+          <label className="label">Barcode</label>
+          <input className="input" value={form.barcode as string} onChange={(e) => set('barcode', e.target.value)} placeholder="Scan or type barcode (optional)" />
         </div>
         <div>
           <label className="label">Category</label>
@@ -128,6 +132,8 @@ export default function GlasswarePage() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [conditionFilter, setConditionFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [lowStock, setLowStock] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -146,12 +152,14 @@ export default function GlasswarePage() {
       if (search) params.set('search', search);
       if (categoryFilter) params.set('category_id', categoryFilter);
       if (conditionFilter) params.set('condition', conditionFilter);
+      if (supplierFilter) params.set('supplier_id', supplierFilter);
+      if (lowStock) params.set('low_stock', 'true');
       const r = await api.get<PaginatedGlassware>(`/glassware?${params}`);
       setItems(r.data?.items ?? []);
       setTotalPages(r.data?.pages ?? 1);
       setTotal(r.data?.total ?? 0);
     } finally { setLoading(false); }
-  }, [search, categoryFilter, conditionFilter, page]);
+  }, [search, categoryFilter, conditionFilter, supplierFilter, lowStock, page]);
 
   useEffect(() => {
     fetchItems();
@@ -197,16 +205,24 @@ export default function GlasswarePage() {
 
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex flex-wrap gap-3 flex-1">
-            <input className="input max-w-xs" placeholder="Search glassware..." value={search}
+            <input className="input max-w-xs" placeholder="Search name or barcode…" value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-            <select className="input max-w-[200px]" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
+            <select className="input max-w-[180px]" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
               <option value="">All Categories</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <select className="input max-w-[160px]" value={conditionFilter} onChange={(e) => { setConditionFilter(e.target.value); setPage(1); }}>
+            <select className="input max-w-[150px]" value={conditionFilter} onChange={(e) => { setConditionFilter(e.target.value); setPage(1); }}>
               <option value="">All Conditions</option>
               {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
+            <select className="input max-w-[160px]" value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }}>
+              <option value="">All Suppliers</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={lowStock} onChange={(e) => { setLowStock(e.target.checked); setPage(1); }} className="rounded" />
+              Low Stock
+            </label>
           </div>
           {canCreate && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Glassware</button>}
         </div>

@@ -37,7 +37,7 @@ function isExpiringSoon(date: string | null) {
 }
 
 const emptyForm = (): ChemicalFormData => ({
-  name: '', cas_number: '', molecular_formula: '', category_id: '',
+  name: '', barcode: '', cas_number: '', molecular_formula: '', category_id: '',
   hazard_class: '', physical_state: '', concentration: '', quantity: '',
   min_quantity: 0, unit: 'ml', location: '', storage_temp: '',
   supplier_id: '', expiry_date: '', notes: '',
@@ -54,7 +54,7 @@ interface ChemFormProps {
 function ChemForm({ initial, categories, suppliers, onSubmit, loading }: ChemFormProps) {
   const [form, setForm] = useState<ChemicalFormData>(
     initial ? {
-      name: initial.name, cas_number: initial.cas_number ?? '',
+      name: initial.name, barcode: initial.barcode ?? '', cas_number: initial.cas_number ?? '',
       molecular_formula: initial.molecular_formula ?? '', category_id: initial.category_id ?? '',
       hazard_class: initial.hazard_class ?? '', physical_state: initial.physical_state ?? '',
       concentration: initial.concentration ?? '', quantity: initial.quantity,
@@ -81,6 +81,10 @@ function ChemForm({ initial, categories, suppliers, onSubmit, loading }: ChemFor
         <div>
           <label className="label">Molecular Formula</label>
           <input className="input" value={form.molecular_formula} onChange={(e) => set('molecular_formula', e.target.value)} placeholder="e.g., HCl" />
+        </div>
+        <div className="col-span-2">
+          <label className="label">Barcode</label>
+          <input className="input" value={form.barcode} onChange={(e) => set('barcode', e.target.value)} placeholder="Scan or type barcode (optional)" />
         </div>
         <div>
           <label className="label">Category</label>
@@ -164,6 +168,9 @@ export default function ChemicalsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [hazardFilter, setHazardFilter] = useState('');
+  const [physStateFilter, setPhysStateFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [expiryFilter, setExpiryFilter] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -181,12 +188,15 @@ export default function ChemicalsPage() {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (search) params.set('search', search);
       if (hazardFilter) params.set('hazard_class', hazardFilter);
+      if (physStateFilter) params.set('physical_state', physStateFilter);
+      if (supplierFilter) params.set('supplier_id', supplierFilter);
+      if (expiryFilter) params.set('expiry_filter', expiryFilter);
       const r = await api.get<PaginatedChemicals>(`/chemicals?${params}`);
       setItems(r.data?.items ?? []);
       setTotalPages(r.data?.pages ?? 1);
       setTotal(r.data?.total ?? 0);
     } finally { setLoading(false); }
-  }, [search, hazardFilter, page]);
+  }, [search, hazardFilter, physStateFilter, supplierFilter, expiryFilter, page]);
 
   useEffect(() => {
     fetchItems();
@@ -235,10 +245,23 @@ export default function ChemicalsPage() {
         {/* Filters */}
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex flex-wrap gap-3 flex-1">
-            <input className="input max-w-xs" placeholder="Search chemicals..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-            <select className="input max-w-[180px]" value={hazardFilter} onChange={(e) => { setHazardFilter(e.target.value); setPage(1); }}>
+            <input className="input max-w-xs" placeholder="Search name, CAS, formula, barcode…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            <select className="input max-w-[170px]" value={hazardFilter} onChange={(e) => { setHazardFilter(e.target.value); setPage(1); }}>
               <option value="">All Hazard Classes</option>
               {HAZARD_CLASSES.map((h) => <option key={h} value={h}>{h}</option>)}
+            </select>
+            <select className="input max-w-[150px]" value={physStateFilter} onChange={(e) => { setPhysStateFilter(e.target.value); setPage(1); }}>
+              <option value="">All States</option>
+              {PHYSICAL_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select className="input max-w-[160px]" value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }}>
+              <option value="">All Suppliers</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <select className="input max-w-[160px]" value={expiryFilter} onChange={(e) => { setExpiryFilter(e.target.value); setPage(1); }}>
+              <option value="">All Expiry</option>
+              <option value="expired">Expired</option>
+              <option value="expiring_soon">Expiring Soon (30d)</option>
             </select>
           </div>
           {canCreate && <button className="btn-primary" onClick={() => { setEditItem(null); setFormModal(true); }}>+ Add Chemical</button>}
